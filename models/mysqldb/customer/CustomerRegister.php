@@ -30,18 +30,19 @@ class CustomerRegister extends Customer
     {
         $parent_rules = parent::rules();
         $current_rules = [
+            ['id', 'filter', 'filter' => 'trim'],
             ['email', 'filter', 'filter' => 'trim'],
             ['email', 'email'],
             ['email', 'validateEmail'],
 
             ['password', 'filter', 'filter' => 'trim'],
             ['password', 'string', 'length' => [6, 30]],
-            
+            // 注册账户，名字不作为必填选项
             ['firstname', 'filter', 'filter' => 'trim'],
-            ['firstname', 'string', 'length' => [1, 50]],
-            
+            // ['firstname', 'string', 'length' => [1, 50]],
+             // 注册账户，名字不作为必填选项
             ['lastname', 'filter', 'filter' => 'trim'],
-            ['lastname', 'string', 'length' => [1, 50]],
+            // ['lastname', 'string', 'length' => [1, 50]],
             
             ['is_subscribed', 'validateIsSubscribed'],
         ];

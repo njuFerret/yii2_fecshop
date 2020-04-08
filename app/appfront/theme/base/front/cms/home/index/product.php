@@ -15,7 +15,7 @@
 				<div class="item">
 					<p class="tc pro_img">
 						<a style="" class="i_proImg" href="<?= $product['url'] ?>">
-							<img style="width:100%;" class="lazyOwl" data-src="<?= Yii::$service->product->image->getResize($product['image'],[285,434],false) ?>"  src="<?= Yii::$service->image->getImgUrl('images/lazyload1.gif','appfront') ; ?>">
+							<img style="width:100%;" class="lazyOwl" data-src="<?= Yii::$service->product->image->getResize($product['image'],[285,434],false) ?>"  src="<?= Yii::$service->image->getImgUrl('appfront/images/lazyload1.gif') ; ?>">
 						</a>
 					</p>
 					<p class="proName">
@@ -24,13 +24,11 @@
 						</a>
 					</p>
 					<?php
-						$config = [
-							'class' 		=> 'fecshop\app\appfront\modules\Catalog\block\category\Price',
-							'view'  		=> 'cms/home/index/price.php',
+						$diConfig = [
 							'price' 		=> $product['price'],
 							'special_price' => $product['special_price'],
 						];
-						echo Yii::$service->page->widget->renderContent('category_product_price',$config);
+						echo Yii::$service->page->widget->DiRender('home/product_price',$diConfig);
 					?>
 				</div>
 			<?php  endforeach;  ?>

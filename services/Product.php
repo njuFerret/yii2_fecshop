@@ -36,7 +36,7 @@ class Product extends Service
      */
     public $customAttrGroup;
 
-    public $categoryAggregateMaxCount; // Yii::$service->product->categoryAggregateMaxCount;
+    public $categoryAggregateMaxCount = 5000; // Yii::$service->product->categoryAggregateMaxCount;
     /**
       * 分类页面的产品，如果一个spu下面由多个sku同时在这个分类，
       * 那么，是否只显示一个sku（score最高），而不是全部sku
@@ -49,7 +49,7 @@ class Product extends Service
      * $storagePrex , $storage , $storagePath 为找到当前的storage而设置的配置参数
      * 可以在配置中更改，更改后，就会通过容器注入的方式修改相应的配置值
      */
-    public $storage     = 'ProductMongodb';   // 当前的storage，如果在config中配置，那么在初始化的时候会被注入修改
+    public $storage; //    = 'ProductMysqldb';   // ProductMysqldb | ProductMongodb 当前的storage，如果在config中配置，那么在初始化的时候会被注入修改
 
     /**
      * 设置storage的path路径，
@@ -71,6 +71,38 @@ class Product extends Service
     public function init()
     {
         parent::init();
+        // init $this->productSpuShowOnlyOneSku
+        $appName = Yii::$service->helper->getAppName();
+        $productSpuShowOnlyOneSku = Yii::$app->store->get($appName.'_catalog','category_productSpuShowOnlyOneSku');
+        $this->productSpuShowOnlyOneSku = ($productSpuShowOnlyOneSku == Yii::$app->store->enable) ? true : false;
+        // 从数据库配置中得到值, 设置成当前service存储，是Mysqldb 还是 Mongodb
+        $config = Yii::$app->store->get('service_db', 'category_and_product');
+        $this->storage = 'ProductMysqldb';
+        if ($config == Yii::$app->store->serviceMongodbName) {
+            $this->storage = 'ProductMongodb';
+        }
+        $currentService = $this->getStorageService($this);
+        $this->_product = new $currentService();
+        // 从数据库配置数据，初始化customAttrGroup
+        $this->initCustomAttrGroup();
+    }
+    // 动态更改为mongodb model
+    public function changeToMongoStorage()
+    {
+        $this->storage     = 'ProductMongodb';
+        $currentService = $this->getStorageService($this);
+        $this->_product = new $currentService();
+    }
+    
+    
+    public function serviceStorageName()
+    {
+        return $this->_product->serviceStorageName();
+    }
+    // 动态更改为mongodb model
+    public function changeToMysqlStorage()
+    {
+        $this->storage     = 'ProductMysqldb';
         $currentService = $this->getStorageService($this);
         $this->_product = new $currentService();
     }
@@ -78,6 +110,74 @@ class Product extends Service
     protected function actionGetEnableStatus()
     {
         return $this->_product->getEnableStatus();
+    }
+    // 从数据库配置数据，初始化customAttrGroup
+    protected function initCustomAttrGroup()
+    {
+        $attrPrimaryKey =$this->attr->getPrimaryKey();
+        $attrGroupPrimaryKey = $this->attrGroup->getPrimaryKey();
+        $allGroupColl = $this->attrGroup->getActiveAllColl();
+        // attr
+        $allAttrColl = $this->attr->getActiveAllColl();
+        $attrTypeColl = [];
+        if ($allAttrColl) {
+            foreach ($allAttrColl as $one) {
+                $attrTypeColl[$one[$attrPrimaryKey]] = $one;
+            }
+        }
+        $customAttrGroupArr = [];
+        if ($allGroupColl) {
+            foreach ($allGroupColl as $one) {
+                $groupName = $one['name'];
+                $attr_ids = $one['attr_ids'];
+                if (!is_array($attr_ids) || empty($attr_ids)) {
+                    continue;
+                }
+                $attr_ids = \fec\helpers\CFunc::array_sort($attr_ids, 'sort_order', 'desc');
+                //var_dump($attr_ids);exit;
+                foreach ($attr_ids as $attr_id_one) {
+                    if (!is_array($attr_id_one)) {
+                        continue;
+                    }
+                    $attr_id = $attr_id_one['attr_id'];
+                    $attr_sort_order = $attr_id_one['sort_order'];
+                    $attrOne = $attrTypeColl[$attr_id];
+                    if (!$attrOne) {
+                        continue;
+                    }
+                    $attrName = $attrOne['name'];
+                    $attrType = $attrOne['attr_type'];
+                    
+                    $attrInfo = [
+                        'dbtype'     => $attrOne['db_type'],
+                        'name'       => $attrName,
+                        'showAsImg'  => $attrOne['show_as_img'] == 1 ? true : false ,
+                        'sort_order'   => $attr_sort_order,
+                    ];
+                    $displayType = $attrOne['display_type'];
+                    $displayInfo = [];
+                    if ($displayType == 'inputString-Lang') {
+                        $displayInfo['type'] = 'inputString';
+                        $displayInfo['lang'] = true;
+                    } else {
+                        $displayInfo['type'] = $displayType;
+                    }
+                    if (is_array($attrOne['display_data'])) {
+                        $d_arr = [];
+                        foreach ($attrOne['display_data'] as $o) {
+                            if ($o['key']) {
+                                $d_arr[] = $o['key'];
+                            }
+                        }
+                        $displayInfo['data'] = $d_arr;
+                    }
+                    $attrInfo['display'] = $displayInfo;
+                    
+                    $customAttrGroupArr[$groupName][$attrType][$attrName] = $attrInfo;
+                }
+            }
+        }
+        $this->customAttrGroup = $customAttrGroupArr;
     }
     
     /**
@@ -116,6 +216,38 @@ class Product extends Service
         ) {
             $arr = array_merge($arr, $this->customAttrGroup[$productAttrGroup]['spu_attr']);
         }
+        return $arr;
+    }
+    
+    public function getGroupGeneralAttr($productAttrGroup)
+    {
+        $arr = [];
+        if ($productAttrGroup == $this->_defaultAttrGroup) {
+            return [];
+        }
+        // 得到普通属性
+        if (isset($this->customAttrGroup[$productAttrGroup]['general_attr'])
+                && is_array($this->customAttrGroup[$productAttrGroup]['general_attr'])
+        ) {
+            $arr = array_merge($arr, $this->customAttrGroup[$productAttrGroup]['general_attr']);
+        }
+        
+        return $arr;
+    }
+    
+    public function getGroupSpuAttr($productAttrGroup)
+    {
+        $arr = [];
+        if ($productAttrGroup == $this->_defaultAttrGroup) {
+            return [];
+        }
+        // 得到用于spu，细分sku的属性，譬如颜色尺码之类。
+        if (isset($this->customAttrGroup[$productAttrGroup]['spu_attr'])
+                && is_array($this->customAttrGroup[$productAttrGroup]['spu_attr'])
+        ) {
+            $arr = array_merge($arr, $this->customAttrGroup[$productAttrGroup]['spu_attr']);
+        }
+        
         return $arr;
     }
     
@@ -243,6 +375,27 @@ class Product extends Service
     {
         return $this->_product->getPrimaryKey();
     }
+    
+    public function getCategoryIdsByProductId($product_id)
+    {
+        return $this->_product->getCategoryIdsByProductId($product_id);
+    }
+    
+    public function getCategoryIdsByProductIds($product_ids)
+    {
+        return $this->_product->getCategoryIdsByProductIds($product_ids);
+    }
+    
+    public function getCategorysByProductIds($product_ids)
+    {
+        return $this->_product->getCategorysByProductIds($product_ids);
+    }
+    
+    public function getProductIdsByCategoryId($category_id)
+    {
+        return $this->_product->getProductIdsByCategoryId($category_id);
+    }
+    
 
     /**
      * get Product model by primary key.
@@ -250,6 +403,14 @@ class Product extends Service
     protected function actionGetByPrimaryKey($primaryKey)
     {
         return $this->_product->getByPrimaryKey($primaryKey);
+    }
+    
+    /**
+     * get Product model by primary key.
+     */
+    protected function actionGetArrByPrimaryKey($primaryKey)
+    {
+        return $this->_product->getArrByPrimaryKey($primaryKey);
     }
 
     /**
@@ -293,6 +454,12 @@ class Product extends Service
     {
         return $this->_product->apiDelete($primaryKey);
     }
+    
+    public function updateProductFavoriteCount($product_id, $count)
+    {
+        return $this->_product->updateProductFavoriteCount($product_id, $count);
+    }
+    
 
     /**
      * 得到Product model的全名.
@@ -376,9 +543,9 @@ class Product extends Service
      * 保存产品（插入和更新），以及保存产品的自定义url
      * 如果提交的数据中定义了自定义url，则按照自定义url保存到urlkey中，如果没有自定义urlkey，则会使用name进行生成。
      */
-    protected function actionSave($one, $originUrlKey = 'catalog/product/index')
+    protected function actionSave($one, $originUrlKey = 'catalog/product/index', $isLoginUser=true)
     {
-        return $this->_product->save($one, $originUrlKey);
+        return $this->_product->save($one, $originUrlKey, $isLoginUser);
     }
 
     /**
@@ -389,6 +556,11 @@ class Product extends Service
     protected function actionRemove($ids)
     {
         return $this->_product->remove($ids);
+    }
+    
+    public function spuCollData($select, $spuAttrArr, $spu)
+    {
+        return $this->_product->spuCollData($select, $spuAttrArr, $spu);
     }
 
     /**
@@ -429,6 +601,11 @@ class Product extends Service
     {
         return $this->_product->getFrontCategoryProducts($filter);
     }
+    public function actionSync($arr)
+    {
+        return $this->_product->sync($arr);
+    }
+    
 
     /**
      * @param $filter_attr | String 需要进行统计的字段名称
@@ -464,34 +641,10 @@ class Product extends Service
      * @param $ids | Array
      * 通过产品ids得到产品sku
      */
-    protected function actionGetSkusByIds($ids)
+    public function getSkusByIds($ids)
     {
-        $skus = [];
-        $_id = $this->getPrimaryKey();
-        if (!empty($ids) && is_array($ids)) {
-            $ids_ob_arr = [];
-            foreach ($ids as $id) {
-                $ids_ob_arr[] = new \MongoDB\BSON\ObjectId($id);
-            }
-            $filter = [
-                'where'            => [
-                    ['in', $_id, $ids_ob_arr],
-
-                ],
-                'asArray' => true,
-            ];
-            $coll = $this->coll($filter);
-            $data = $coll['coll'];
-            if (!empty($data) && is_array($data)) {
-                foreach ($data as $one) {
-                    $skus[(string) $one[$_id]] = $one['sku'];
-                }
-            }
-        }
-
-        return $skus;
+        return $this->_product->getSkusByIds($ids);
     }
-
     /**
      * @param $spu | String
      * @param $avag_rate | Int 产品的总平均得分
@@ -503,4 +656,20 @@ class Product extends Service
     {
         return $this->_product->updateProductReviewInfo($spu, $avag_rate, $count, $lang_code, $avag_lang_rate, $lang_count, $rate_total_arr, $rate_lang_total_arr);
     }
+
+    public function updateAllScoreToZero()
+    {
+        return $this->_product->updateAllScoreToZero();
+    }
+    
+    
+    public function excelSave($productArr)
+    {
+        return $this->_product->excelSave($productArr);
+    }
+    
+    
+    
+    
+    
 }

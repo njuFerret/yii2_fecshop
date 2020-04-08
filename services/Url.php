@@ -24,7 +24,7 @@ use Yii;
  */
 class Url extends Service
 {
-    public $randomCount = 8;
+    public $randomCount = 9;
 
     public $showScriptName;
 
@@ -62,11 +62,21 @@ class Url extends Service
         $str = trim($str);
         $originUrl = $originUrl ? '/'.trim($originUrl, '/') : '';
         $originUrlKey = $originUrlKey ? '/'.trim($originUrlKey, '/') : '';
-        if ($originUrlKey) {
+        if ($originUrlKey && $originUrl) {
             /**
              * if originUrlKey and  originUrl is exist in url rewrite collectons.
-             */
+             */ 
             $model = $this->find();
+            // 如果已经存在，那么直接返回
+            $data_one = $model->where([
+                'custom_url_key'    => $originUrlKey,
+                'origin_url'        => $originUrl,
+            ])->one();
+            if (isset($data_one['custom_url_key'])) {
+
+                return $originUrlKey;
+            }
+            /*
             $data_one = $model->where([
                 'custom_url_key'    => $originUrlKey,
                 'origin_url'        => $originUrl,
@@ -74,10 +84,12 @@ class Url extends Service
             if (isset($data_one['custom_url_key'])) {
                 // 只要进行了查询，就要更新一下rewrite url表的updated_at.
                 $data_one->updated_at = time();
+                $data_one->origin_url = $originUrl;
                 $data_one->save();
 
                 return $originUrlKey;
             }
+            */
         }
         if ($originUrlKey) {
             $urlKey = $this->generateUrlByName($originUrlKey);
@@ -263,6 +275,17 @@ class Url extends Service
     {
         return Yii::$app->getHomeUrl();
     }
+    
+    public function isHttps()
+    {
+        $homeUrl = $this->homeUrl();
+        if (substr($homeUrl, 0, 5) == 'https') {
+            
+            return true;
+        }
+        
+        return false;
+    }
 
     /**
      * get  base url.
@@ -347,6 +370,23 @@ class Url extends Service
 
         return $str;
     }
+    
+    protected function isRandomStr($randomStr)
+    {
+        $f = substr($randomStr, 0, 1);
+        if ($f !== '-') {
+            return false;
+        }
+        $s =  substr($randomStr, 1);
+        if (strlen($s) != $this->randomCount) {
+            return false;
+        }
+        if(!is_numeric($s)){
+            return false;
+        }
+        
+        return true;
+    }
 
     /**
      * if url key is exist in url_rewrite table ,Behind url add some random string.
@@ -358,13 +398,33 @@ class Url extends Service
             $o_url = $this->_origin_url;
             if (strstr($this->_origin_url, '.')) {
                 list($o_url, $suffix) = explode('.', $this->_origin_url);
+                $l = $this->randomCount +1;
+                if (strlen($o_url) > $l) {
+                    $randomStrSub = substr($o_url, strlen($o_url) - $l , $l );
+                    $orignUrlK = substr($o_url, 0, strlen($o_url) - $l );
+                    if ($this->isRandomStr($randomStrSub)) {
+                        $o_url = $orignUrlK;
+                    }
+                }
+                
                 $randomStr = $this->getRandom();
 
                 return $o_url.'-'.$randomStr.'.'.$suffix;
-            }
-            $randomStr = $this->getRandom();
+            } else {
+                $l = $this->randomCount +1;
+                
+                if (strlen($o_url) > $l) {
+                    $randomStr = substr($o_url, strlen($o_url) - $l , $l );
+                    $orignUrlK = substr($o_url, 0, strlen($o_url) - $l );
+                    if ($this->isRandomStr($randomStr)) {
+                        $o_url = $orignUrlK;
+                    }
+                }
+                $randomStr = $this->getRandom();
 
-            return $this->_origin_url.'-'.$randomStr;
+                return $o_url.'-'.$randomStr;
+            }
+            
         }
     }
 
@@ -454,4 +514,54 @@ class Url extends Service
             Yii::$app->getResponse()->redirect($error404Url)->send();
         }
     }
+    // 判断是否是首页
+    public function isHomePage()
+    {
+        $rules = Yii::$app->urlManager->rules;
+        $route = '';
+        if (!is_array($rules)) {
+            return false;
+        }
+        foreach ($rules as $one) {
+            $name = $one->name;
+            if ($name === '') {
+                $route = $one->route;
+            }
+        }
+        if (!$route) {
+            return false;
+        }
+        //  $route  默认为  cms/home/index
+        $arr = explode('/', $route);
+        if (count($arr) != 3) {
+            return false;
+        }
+        $mId = Yii::$app->controller->module->id;
+        $cId = Yii::$app->controller->id;
+        $aId = Yii::$app->controller->action->id;
+        // 通过module controler  action 的id 与 $routeArr核对，不一致则为false
+        if ($mId != $arr[0] || $cId != $arr[1] || $aId != $arr[2]) {
+            return false;
+        }
+        
+        return true;
+    }
+    /**
+     * @param $url | string ， 网址url字符串
+     * @return bool
+     * 判断传递的网址url字符串，是否是合法的网址字符串。
+     */
+    public function isValidUrl($url)
+    {
+        if (filter_var($url, FILTER_VALIDATE_URL) === FALSE) {
+            
+            return false;
+        }
+        
+        return true;
+    }
+    
+
+
+
 }

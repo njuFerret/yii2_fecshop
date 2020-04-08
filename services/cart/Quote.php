@@ -26,6 +26,9 @@ use Yii;
  */
 class Quote extends Service
 {
+    /**
+     * 购物车的个数计算，是否仅仅计算active状态的产品个数总和，如果设置false，则将购物车中所有的产品个数累加。
+     */
     const SESSION_CART_ID = 'current_session_cart_id';
 
     protected $_cart_id;
@@ -57,19 +60,35 @@ class Quote extends Service
     public function getCartId()
     {
         if (!$this->_cart_id) {
-            $cart_id = Yii::$service->session->get(self::SESSION_CART_ID);
-
-            if (! $cart_id) {
-                if (! Yii::$app->user->isGuest) {
-                    $customerId = Yii::$app->user->getId();
-                    $cart = $this->getCartByCustomerId($customerId);
-                    if ($cart && $cart['cart_id']) {
-                        $this->setCartId($cart['cart_id']);
-                    }
+            if (Yii::$service->store->isAppserver()) {
+                // appserver 必须登陆用户才能加入购物车
+                if (Yii::$app->user->isGuest) {
+                    Yii::$service->helper->errors->add('appserver get cart id must login account');
+                    
+                    return false;
+                }
+                $customerId = Yii::$app->user->getId();
+                $cart = $this->getCartByCustomerId($customerId);
+                if ($cart && $cart['cart_id']) {
+                    $this->setCartId($cart['cart_id']);
                 }
             } else {
-                $this->_cart_id = $cart_id;
+                $cart_id = Yii::$service->session->get(self::SESSION_CART_ID);
+
+                if (! $cart_id) {
+                    if (! Yii::$app->user->isGuest) {
+                        $customerId = Yii::$app->user->getId();
+                        $cart = $this->getCartByCustomerId($customerId);
+                        if ($cart && $cart['cart_id']) {
+                            $this->setCartId($cart['cart_id']);
+                        }
+                    }
+                } else {
+                    $this->_cart_id = $cart_id;
+                }
             }
+            
+            
         }
 
         return $this->_cart_id;
@@ -203,17 +222,20 @@ class Quote extends Service
 
     /**
      * @param $item_qty | Int
-     * 当$item_qty为null时，从cart items表中查询产品总数。
-     * 当$item_qty 不等于null时，代表已经知道购物车中产品的个数，不需要去cart_item表中查询，譬如清空购物车操作，直接就知道产品个数肯定为零。
+     * 当$active_item_qty为null时，从cart items表中查询产品总数。
+     * 当$item_qty 不等于null时，代表已经知道购物车中active产品的个数，不需要去cart_item表中查询，譬如清空购物车操作，直接就知道产品个数肯定为零。
      * 当购物车的产品变动后，会调用该函数，更新cart表的产品总数
      */
-    public function computeCartInfo($item_qty = null)
+    public function computeCartInfo($active_item_qty = null)
     {
-        if ($item_qty === null) {
-            $item_qty = Yii::$service->cart->quoteItem->getItemQty();
+        $items_all_count = 0;
+        if ($active_item_qty === null) {
+            $active_item_qty = Yii::$service->cart->quoteItem->getActiveItemQty();
         }
+        $items_all_count = Yii::$service->cart->quoteItem->getItemAllQty();
         $cart = $this->getCart();
-        $cart->items_count = $item_qty;
+        $cart->items_all_count = $items_all_count;
+        $cart->items_count = $active_item_qty;
         $cart->save();
 
         return true;
@@ -227,8 +249,10 @@ class Quote extends Service
     protected function actionSetCartId($cart_id)
     {
         $this->_cart_id = $cart_id;
-
-        Yii::$service->session->set(self::SESSION_CART_ID, $cart_id);
+        if (!Yii::$service->store->isAppserver()) {
+            Yii::$service->session->set(self::SESSION_CART_ID, $cart_id);
+        }
+        
     }
 
     /**
@@ -360,9 +384,11 @@ class Quote extends Service
                 return false;
             }
             $cart = $this->getCart();
-
-            $items_qty = $cart['items_count'];
-            if ($items_qty <= 0) {
+            // 购物车中所有的产品个数
+            $items_all_count = $cart['items_all_count'];
+            // 购物车中active状态的产品个数
+            $items_count = $cart['items_count'];
+            if ($items_count <=0 && $items_all_count <= 0) {
                 return false;
             }
             $coupon_code = $cart['coupon_code'];
@@ -395,7 +421,9 @@ class Quote extends Service
 
                     $curr_grand_total = $product_total + $currShippingCost - $currDiscountCost;
                     $base_grand_total = $base_product_total + $baseShippingCost - $baseDiscountCost;
-
+                    if (!$shipping_method) {
+                        $shipping_method = $cart['shipping_method'];
+                    }
                     $this->cartInfo[$cartInfoKey] = [
                         'cart_id'           => $cart_id,
                         'store'             => $cart['store'],          // store nme

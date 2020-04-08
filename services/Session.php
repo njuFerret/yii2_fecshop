@@ -28,8 +28,12 @@ class Session extends Service
     // 设置session超时时间
     public $timeout;
 
-    // 当过期时间+session创建时间 - 当前事件 < $updateTimeLimit ,则更新session创建时间
+    // 当过期时间 + session创建时间 - 当前时间 < $updateTimeLimit ,则更新session创建时间
     public $updateTimeLimit = 600;
+
+    public function isUpdateTimeOut($createTime){
+        return (int)$this->timeout + (int)$createTime - time() < $this->updateTimeLimit;
+    }
     
     /**
      * $storage , $storagePath 为找到当前的storage而设置的配置参数
@@ -74,6 +78,12 @@ class Session extends Service
             }
             */
         }
+        $appName = Yii::$service->helper->getAppName();
+        $accessTokenTimeoutConfig = Yii::$app->store->get($appName.'_base', 'customer_access_token_timeout');
+        $accessTokenUpdateTimeLimitConfig = Yii::$app->store->get($appName.'_base', 'customer_access_token_update_time_limit');
+        $this->timeout = $accessTokenTimeoutConfig ? $accessTokenTimeoutConfig : 86400 ;
+        $this->updateTimeLimit = $accessTokenUpdateTimeLimitConfig ? $accessTokenUpdateTimeLimitConfig : 600 ;
+        // var_dump([$this->timeout, $this->updateTimeLimit]);
     }
     
     /**
@@ -102,6 +112,14 @@ class Session extends Service
             Yii::$app->response->getHeaders()->set($uuidName, $this->_uuid);
         }
         return $this->_uuid;
+    }
+    
+    // 刷新uuid（帐号退出后，需要刷新uuid）
+    public function reflushUUID()
+    {
+        $uuid1 = Uuid::uuid1();
+        $this->_uuid = $uuid1->toString();
+        Yii::$app->response->getHeaders()->set($this->fecshop_uuid, $this->_uuid);
     }
     
     public function set($key, $val, $timeout='')

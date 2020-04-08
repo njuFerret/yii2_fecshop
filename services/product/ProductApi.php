@@ -266,7 +266,7 @@ class ProductApi extends Service
          *  6. 数组的key，需要和sku相等，譬如 red-l-s2-s3 要等于下面的  "sku": "red-l-s2-s3"
          *
          */
-        
+        /*
         $custom_option = $post['custom_option'];
         if (!empty($custom_option) && is_array($custom_option) && isset($customAttrGroup[$attr_group]['custom_options']) && $customAttrGroup[$attr_group]['custom_options']) {
             $custom_option_arr = [];
@@ -326,25 +326,26 @@ class ProductApi extends Service
                 $this->_param['custom_option'] = $custom_option_arr;
             }
         }
+        */
         
         // 选填
         $remark = $post['remark'];
-        if (!$remark) {
+        if ($remark) {
             $this->_param['remark'] = $remark;
         }
         // 选填
         $relation_sku = $post['relation_sku'];
-        if (!$relation_sku) {
+        if ($relation_sku) {
             $this->_param['relation_sku'] = $relation_sku;
         }
         // 选填
         $buy_also_buy_sku = $post['buy_also_buy_sku'];
-        if (!$buy_also_buy_sku) {
+        if ($buy_also_buy_sku) {
             $this->_param['buy_also_buy_sku'] = $buy_also_buy_sku;
         }
         // 选填
         $see_also_see_sku = $post['see_also_see_sku'];
-        if (!$see_also_see_sku) {
+        if ($see_also_see_sku) {
             $this->_param['see_also_see_sku'] = $see_also_see_sku;
         }
         
@@ -359,7 +360,7 @@ class ProductApi extends Service
         $this->_param['status'] = $status;
         // 选填 产品的url key
         $url_key = $post['url_key'];
-        if (!$url_key) {
+        if ($url_key) {
             $this->_param['url_key'] = $url_key;
         }
         
@@ -478,7 +479,12 @@ class ProductApi extends Service
                 'error'  => $this->_error,
             ];
         }
-        
+        // is_deputy
+        $spu = $this->_param['spu'];
+        $pOne = Yii::$service->product->getBySpu($spu);
+        if (!is_array($pOne) || count($pOne) < 1) {
+            $this->_param['is_deputy'] = 1;
+        }
         Yii::$service->product->addGroupAttrs($this->_param['attr_group']);
         $originUrlKey   = 'catalog/product/index';
         $saveData       = Yii::$service->product->save($this->_param, $originUrlKey);

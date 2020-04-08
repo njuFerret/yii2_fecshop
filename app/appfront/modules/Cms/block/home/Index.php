@@ -1,13 +1,19 @@
 <?php
-/*
- * 存放 一些基本的非数据库数据 如 html
- * 都是数组
+/**
+ * FecMall file.
+ *
+ * @link http://www.fecmall.com/
+ * @copyright Copyright (c) 2016 FecMall Software LLC
+ * @license http://www.fecmall.com/license/
  */
 
 namespace fecshop\app\appfront\modules\Cms\block\home;
 
 use Yii;
-
+/**
+ * @author Terry Zhao <2358269014@qq.com>
+ * @since 1.0
+ */
 class Index
 {
     public function getLastData()
@@ -23,15 +29,18 @@ class Index
 
     public function getFeaturedProduct()
     {
-        $featured_skus = Yii::$app->controller->module->params['homeFeaturedSku'];
+        $appName = Yii::$service->helper->getAppName();
+        $bestFeatureSkuConfig = Yii::$app->store->get($appName.'_home', 'best_feature_sku');
+        $featured_skus = explode(',', $bestFeatureSkuConfig);
 
         return $this->getProductBySkus($featured_skus);
     }
 
     public function getBestSellerProducts()
     {
-        $bestSellSkus = Yii::$app->controller->module->params['homeBestSellerSku'];
-
+        $appName = Yii::$service->helper->getAppName();
+        $bestSellSkusConfig = Yii::$app->store->get($appName.'_home', 'best_seller_sku');
+        $bestSellSkus = explode(',', $bestSellSkusConfig);
         return $this->getProductBySkus($bestSellSkus);
     }
 
@@ -42,11 +51,10 @@ class Index
                 'sku', 'spu', 'name', 'image',
                 'price', 'special_price',
                 'special_from', 'special_to',
-                'url_key', 'score',
+                'url_key', 'score', 'reviw_rate_star_average', 'review_count'
             ];
             $filter['where'] = ['in', 'sku', $skus];
             $products = Yii::$service->product->getProducts($filter);
-            //var_dump($products);
             $products = Yii::$service->category->product->convertToCategoryInfo($products);
 
             return $products;
@@ -55,19 +63,22 @@ class Index
 
     public function initHead()
     {
-        $home_title = Yii::$app->controller->module->params['home_title'];
-        $home_meta_keywords = Yii::$app->controller->module->params['home_meta_keywords'];
-        $home_meta_description = Yii::$app->controller->module->params['home_meta_description'];
-
+        $appName = Yii::$service->helper->getAppName();
+        $home_title = Yii::$app->store->get($appName.'_home', 'meta_title');
+        $appName = Yii::$service->helper->getAppName();
+        $home_meta_keywords = Yii::$app->store->get($appName.'_home', 'meta_keywords');
+        $appName = Yii::$service->helper->getAppName();
+        $home_meta_description = Yii::$app->store->get($appName.'_home', 'meta_description');
+        
         Yii::$app->view->registerMetaTag([
             'name' => 'keywords',
-            'content' => Yii::$service->store->getStoreAttrVal($home_meta_keywords, 'home_meta_keywords'),
+            'content' => Yii::$service->store->getStoreAttrVal($home_meta_keywords, 'meta_keywords'),
         ]);
 
         Yii::$app->view->registerMetaTag([
             'name' => 'description',
-            'content' => Yii::$service->store->getStoreAttrVal($home_meta_description, 'home_meta_description'),
+            'content' => Yii::$service->store->getStoreAttrVal($home_meta_description, 'meta_description'),
         ]);
-        Yii::$app->view->title = Yii::$service->store->getStoreAttrVal($home_title, 'home_title');
+        Yii::$app->view->title = Yii::$service->store->getStoreAttrVal($home_title, 'meta_title');
     }
 }

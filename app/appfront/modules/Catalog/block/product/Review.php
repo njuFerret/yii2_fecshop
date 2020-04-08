@@ -16,12 +16,16 @@ use Yii;
  * @author Terry Zhao <2358269014@qq.com>
  * @since 1.0
  */
-class Review
+class Review extends \yii\base\BaseObject
 {
     public $product_id;
     public $spu;
     public $filterBySpu = true;
     public $filterOrderBy = 'review_date';
+    public $reviw_rate_star_info;
+    public $review_count;
+    public $reviw_rate_star_average;
+    
     
     /**
      * 为了可以使用rewriteMap，use 引入的文件统一采用下面的方式，通过Yii::mapGet()得到className和Object
@@ -29,8 +33,9 @@ class Review
     protected $_reviewHelperName = '\fecshop\app\appfront\modules\Catalog\helpers\Review';
     protected $_reviewHelper;
 
-    public function __construct()
+    public function init()
     {
+        parent::init();
         /**
          * 通过Yii::mapGet() 得到重写后的class类名以及对象。Yii::mapGet是在文件@fecshop\yii\Yii.php中
          */
@@ -55,9 +60,12 @@ class Review
             return [
                 '_id' => $this->product_id,
                 'spu' => $this->spu,
-                'review_count'    => $count,
                 'coll'            => $coll,
                 'noActiveStatus'=> Yii::$service->product->review->noActiveStatus(),
+                'reviw_rate_star_info' => $this->reviw_rate_star_info,
+                'review_count' => $this->review_count,
+                'reviw_rate_star_average' => $this->reviw_rate_star_average,
+                
             ];
         }
     }
@@ -66,8 +74,11 @@ class Review
      */
     public function getReviewsBySpu($spu)
     {
-        $review = Yii::$app->getModule('catalog')->params['review'];
-        $productPageReviewCount = isset($review['productPageReviewCount']) ? $review['productPageReviewCount'] : 10;
+        // $review = Yii::$app->getModule('catalog')->params['review'];
+        $appName = Yii::$service->helper->getAppName();
+        $productPageReviewCount = Yii::$app->store->get($appName.'_catalog','review_productPageReviewCount');
+        
+        $productPageReviewCount = $productPageReviewCount ? $productPageReviewCount: 10;
         $currentIp = \fec\helpers\CFunc::get_real_ip();
         $filter = [
             'numPerPage'    => $productPageReviewCount,

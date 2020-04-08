@@ -13,7 +13,8 @@ use fec\helpers\CRequest;
 ?>
 <div class="main container one-column">
 	<div class="col-main">
-    <?= Yii::$service->page->widget->render('flashmessage'); ?>
+    <?= Yii::$service->page->widget->render('base/breadcrumbs',$this); ?>
+    <?= Yii::$service->page->widget->render('base/flashmessage'); ?>
 	<?php if(is_array($cart_info) && !empty($cart_info)):   ?>
 			    
 		<div class="product_page">
@@ -87,7 +88,7 @@ use fec\helpers\CRequest;
 										<ul>
 											<?php foreach($product_one['custom_option_info'] as $label => $val):  ?>
 												
-												<li><?= Yii::$service->page->translate->__(ucwords($label).':') ?><?= Yii::$service->page->translate->__($val) ?> </li>
+												<li><?= Yii::$service->page->translate->__(ucwords($label)).':' ?><?= Yii::$service->page->translate->__($val) ?> </li>
 												
 											<?php endforeach;  ?>
 										</ul>
@@ -251,11 +252,12 @@ use fec\helpers\CRequest;
 						<div class="proceed_to_checkout">
 							
 							<button onclick="location.href='<?= Yii::$service->url->getUrl('checkout/onepage');  ?>'" type="button" title="Proceed to Checkout" class="button btn-proceed-checkout btn-checkout"><span><span><?= Yii::$service->page->translate->__('Proceed to Pay');?></span></span></button>
-							
-							<span class="or">- <?= Yii::$service->page->translate->__('OR');?> - </span>
-							<a class="express_paypal" href="<?= Yii::$service->url->getUrl('payment/paypal/express/start');    ?>">
-							
-							</a>
+							<?php if ($enablePaypalExpress): ?>
+                                <span class="or">- <?= Yii::$service->page->translate->__('OR');?> - </span>
+                                <a class="express_paypal" href="<?= Yii::$service->url->getUrl('payment/paypal/express/start');    ?>">
+                                
+                                </a>
+                            <?php endif;  ?>
 						</div>
 					</div>
 					<div class="clear"></div>
@@ -328,9 +330,11 @@ $(document).ready(function(){
 				data: $data,
 				url:updateCartInfoUrl,
 				success:function(data, textStatus){ 
-					if(data.status == 'success'){
+					if (data.status == 'success') {
 						window.location.href=currentUrl;
-					}
+					} else {
+                        alert(data.content);
+                    }
 				},
 				error:function (XMLHttpRequest, textStatus, errorThrown){}
 			});
@@ -353,9 +357,11 @@ $(document).ready(function(){
 			data: $data,
 			url:updateCartInfoUrl,
 			success:function(data, textStatus){ 
-				if(data.status == 'success'){
+				if (data.status == 'success') {
 					window.location.href=currentUrl;
-				}
+				} else {
+                    alert(data.content);
+                }
 			},
 			error:function (XMLHttpRequest, textStatus, errorThrown){}
 		});

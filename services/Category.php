@@ -10,6 +10,7 @@
 
 namespace fecshop\services;
 
+use Yii;
 /**
  * Category service.
  *
@@ -27,7 +28,7 @@ class Category extends Service
      * $storagePrex , $storage , $storagePath 为找到当前的storage而设置的配置参数
      * 可以在配置中更改，更改后，就会通过容器注入的方式修改相应的配置值
      */
-    public $storage     = 'CategoryMongodb';   // 当前的storage，如果在config中配置，那么在初始化的时候会被注入修改
+    public $storage; //     = 'CategoryMysqldb';   //  CategoryMongodb | CategoryMysqldb  当前的storage，如果在config中配置，那么在初始化的时候会被注入修改
 
     /**
      * 设置storage的path路径，
@@ -48,17 +49,32 @@ class Category extends Service
     public function init()
     {
         parent::init();
+        // 从数据库配置中得到值, 设置成当前service存储，是Mysqldb 还是 Mongodb
+        $config = Yii::$app->store->get('service_db', 'category_and_product');
+        $this->storage = 'CategoryMysqldb';
+        if ($config == Yii::$app->store->serviceMongodbName) {
+            $this->storage = 'CategoryMongodb';
+        }
         $currentService = $this->getStorageService($this);
         $this->_category = new $currentService();
-        /*
-        if ($this->storage == 'mongodb') {
-            $this->_category = new CategoryMongodb();
-        //}else if($this->storage == 'mysqldb'){
-            //$this->_category = new CategoryMysqldb;
-        }
-        */
+        
     }
-
+    // 动态更改为mongodb model
+    public function changeToMongoStorage()
+    {
+        $this->storage     = 'CategoryMongodb';
+        $currentService = $this->getStorageService($this);
+        $this->_category = new $currentService();
+    }
+    
+    // 动态更改为mongodb model
+    public function changeToMysqlStorage()
+    {
+        $this->storage     = 'CategoryMysqldb';
+        $currentService = $this->getStorageService($this);
+        $this->_category = new $currentService();
+    }
+    
     protected function actionGetCategoryEnableStatus()
     {
         return $this->_category->getCategoryEnableStatus();
@@ -128,6 +144,19 @@ class Category extends Service
     {
         return $this->_category->coll($filter);
     }
+    
+    public function apiColl($filter = [])
+    {
+        return $this->_category->apiColl($filter);
+    }
+    
+    public function findOne($where)
+    {
+        return $this->_category->findOne($where);
+    }
+    
+    
+    
 
     /**
      *  得到分类的树数组。
@@ -147,6 +176,13 @@ class Category extends Service
     protected function actionSave($one, $originUrlKey = 'catalog/category/index')
     {
         return $this->_category->save($one, $originUrlKey);
+    }
+    /**
+     *
+     */
+    public function sync($arr)
+    {
+        return $this->_category->sync($arr);
     }
 
     /**
@@ -185,4 +221,19 @@ class Category extends Service
     {
         return $this->_category->getFilterCategory($category_id, $parent_id);
     }
+    
+    /**
+     * 得到category model的全名.
+     */
+    public function getChildCategory($category_id)
+    {
+        return $this->_category->getChildCategory($category_id);
+    }
+    
+    public function excelSave($categoryArr)
+    {
+        return $this->_category->excelSave($categoryArr);
+    }
+    
+    
 }

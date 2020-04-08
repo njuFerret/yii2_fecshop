@@ -3,9 +3,9 @@
 /*
  * FecShop file.
  *
- * @link http://www.fecshop.com/
+ * @link http://www.fecmall.com/
  * @copyright Copyright (c) 2016 FecShop Software LLC
- * @license http://www.fecshop.com/license/
+ * @license http://www.fecmall.com/license/
  */
 
 namespace fecshop\services;
@@ -61,6 +61,13 @@ class Order extends Service
     
     // 订单号格式。
     public $increment_id = 1000000000;
+    
+    public $createdOrder;
+
+    // 计算销量的订单时间范围（将最近几个月内的订单中的产品销售个数累加，作为产品的销量值,譬如3代表计算最近3个月的订单产品）
+    // 0：代表计算订单表中所有的订单。
+    // 这个值用于console入口（脚本端），通过shell脚本执行，计算产品的销量，将订单中产品个数累加作为产品的销量，然后将这个值更新到产品表字段中，用于产品按照销量排序或者过滤
+    public $orderProductSaleInMonths = 3;
 
     // 将xx分钟内未支付的pending订单取消掉，并释放产品库存的设置
     public $minuteBeforeThatReturnPendingStock  = 60;
@@ -96,6 +103,19 @@ class Order extends Service
     {
         parent::init();
         list($this->_orderModelName, $this->_orderModel) = \Yii::mapGet($this->_orderModelName);
+        $this->initParamConfig();
+    }
+    
+    public function initParamConfig()
+    {
+        $this->increment_id = Yii::$app->store->get('order', 'increment_id');
+        $requiredAddressAttr = Yii::$app->store->get('order', 'requiredAddressAttr');
+        $this->requiredAddressAttr = explode(',',$requiredAddressAttr);
+        $this->orderProductSaleInMonths = Yii::$app->store->get('order', 'orderProductSaleInMonths');
+        $this->minuteBeforeThatReturnPendingStock = Yii::$app->store->get('order', 'minuteBeforeThatReturnPendingStock');
+        $this->orderCountThatReturnPendingStock = Yii::$app->store->get('order', 'orderCountThatReturnPendingStock');
+        $this->orderRemarkStrMaxLen = Yii::$app->store->get('order', 'orderRemarkStrMaxLen');
+        //$guestOrder = Yii::$app->store->get('order', 'guestOrder');
     }
     
     /**
@@ -121,6 +141,7 @@ class Order extends Service
             $this->payment_status_confirmed,
             $this->status_holded,
             $this->status_processing,
+            $this->status_dispatched,
             $this->status_completed,
         ];
     }
@@ -199,6 +220,9 @@ class Order extends Service
         //$this->requiredAddressAttr;
         if (is_array($this->requiredAddressAttr) && !empty($this->requiredAddressAttr)) {
             foreach ($this->requiredAddressAttr as $attr) {
+                if (!$attr) {
+                    continue;
+                }
                 if (!isset($billing[$attr]) || empty($billing[$attr])) {
                     Yii::$service->helper->errors->add('{attr} can not empty', ['attr' => $attr]);
 
@@ -249,7 +273,16 @@ class Order extends Service
             return false;
         }
     }
-
+    
+    protected $_currentOrderIncrementId = '';
+    public function setCurrentOrderIncrementId($increment_id)
+    {
+        $this->_currentOrderIncrementId = $increment_id;
+    }
+    public function getCurrentOrderIncrementId()
+    {
+        return $this->_currentOrderIncrementId;
+    }
     /**
      * @param $reflush | boolean 是否从数据库中重新获取，如果是，则不会使用类变量中计算的值
      * 获取当前的订单信息，原理为：
@@ -259,8 +292,18 @@ class Order extends Service
     protected function actionGetCurrentOrderInfo($reflush = false)
     {
         if (!$this->_currentOrderInfo || $reflush) {
-            $increment_id = Yii::$service->order->getSessionIncrementId();
-            $this->_currentOrderInfo = Yii::$service->order->getOrderInfoByIncrementId($increment_id);
+            if (Yii::$service->store->isAppserver()) {
+                $increment_id = $this->getCurrentOrderIncrementId();
+                if (!$increment_id) {
+                    Yii::$service->helper->errors->add('current increment id is empty, you must setCurrentOrderIncrementId');
+                    
+                    return null;
+                }
+                $this->_currentOrderInfo = Yii::$service->order->getOrderInfoByIncrementId($increment_id);
+            } else {
+                $increment_id = Yii::$service->order->getSessionIncrementId();
+                $this->_currentOrderInfo = Yii::$service->order->getOrderInfoByIncrementId($increment_id);
+            }
         }
 
         return $this->_currentOrderInfo;
@@ -477,7 +520,10 @@ class Order extends Service
             $increment_id = $this->generateIncrementIdByOrderId($order_id);
             $myOrder['increment_id'] = $increment_id;
             $myOrder->save();
-            $this->setSessionIncrementId($increment_id);
+            $this->createdOrder = $myOrder;
+            if (!Yii::$service->store->isAppserver()) {  // appserver入口，没有session机制。
+                $this->setSessionIncrementId($increment_id);
+            }
             return true;
         } else {
             Yii::$service->helper->errors->add('generate order fail');
@@ -615,6 +661,7 @@ class Order extends Service
 
             return false;
         }
+        
         // 保存订单
         $saveOrderStatus = $myOrder->save();
         if (!$saveOrderStatus) {
@@ -630,6 +677,7 @@ class Order extends Service
                 return false;
             }
         }
+        
         Yii::$service->event->trigger($afterEventName, $myOrder);
         if ($myOrder[$this->getPrimaryKey()]) {
             // 保存订单产品
@@ -643,8 +691,12 @@ class Order extends Service
             if (!Yii::$app->user->isGuest && $clearCart) {
                 Yii::$service->cart->clearCartProductAndCoupon();
             }
+            $this->createdOrder = $myOrder;
             // 执行成功，则在session中设置increment_id
-            $this->setSessionIncrementId($increment_id);
+            if (!Yii::$service->store->isAppserver()) {  // appserver入口，没有session机制。
+                $this->setSessionIncrementId($increment_id);
+            }
+            
             return true;
         } else {
             Yii::$service->helper->errors->add('generate order fail');
@@ -884,28 +936,74 @@ class Order extends Service
      *              取消订单，更新订单的状态为cancel。
      *              并且释放库存给产品
      */
-    protected function actionCancel($increment_id = '')
+    protected function actionCancel($increment_id = '', $customer_id = '')
     {
         if (!$increment_id) {
             $increment_id = $this->getSessionIncrementId();
         }
-        if ($increment_id) {
-            $order = $this->getByIncrementId($increment_id);
-            if ($order) {
-                $order->order_status    = $this->payment_status_canceled;
-                $order->updated_at      = time();
-                $order->save();
-                // 释放库存
-                $order_primary_key      = $this->getPrimaryKey();
-                $product_items          = Yii::$service->order->item->getByOrderId($order[$order_primary_key], true);
-                Yii::$service->product->stock->returnQty($product_items);
-                
-                return true;
-            }
+        if (!$increment_id) {
+            Yii::$service->helper->errors->add('order increment id is empty');
+           
+            return false;
         }
-
-        return false;
+        
+        $order = $this->getByIncrementId($increment_id);
+        if ($customer_id && $order['customer_id'] != $customer_id) {
+            Yii::$service->helper->errors->add('do not have role to cancel this order');
+            
+            return false;
+        }
+        // 通过updateAll的结果数，来判定是否取消成功。
+        $updateComules = $this->_orderModel->updateAll(
+            [
+                'order_status' => $this->status_canceled,
+                'updated_at' => time(),
+            ],
+            [
+                'and',
+                ['increment_id'  => $increment_id],
+                ['<>', 'order_status', $this->status_canceled],
+            ]
+        );
+        if (empty($updateComules)) {
+            Yii::$service->helper->errors->add('order cancel fail');
+            
+            return false;
+        }
+        // 返还库存
+        $order_primary_key      = $this->getPrimaryKey();
+        $product_items          = Yii::$service->order->item->getByOrderId($order[$order_primary_key], true);
+        if (!Yii::$service->product->stock->returnQty($product_items)) {
+            
+            return false;
+        }
+        
+        return true;
     }
+    
+    
+    
+    // 用户确认收货
+    public function delivery($incrementId, $customerId)
+    {
+        $updateComules = $this->_orderModel->updateAll(
+            [
+                'order_status' => $this->status_completed,
+            ],
+            [
+                'increment_id'  => $incrementId,
+                'order_status' => $this->status_dispatched,
+                'customer_id' => $customerId,
+            ]
+        );
+        if (empty($updateComules)) {
+            Yii::$service->helper->errors->add('customer delivery order fail');
+            return false;
+        }
+        return true;
+        
+    }
+    
 
     /**
      * 将xx时间内未支付的pending订单取消掉，并释放产品库存。
@@ -1002,8 +1100,7 @@ class Order extends Service
         $preMonthTime = strtotime("-$days days");
         $filter = [
             'select' => ['created_at', 'increment_id', 'order_status', 'base_grand_total' ],
-            'numPerPage' 	=> 10000000,
-            'pageNum'		=> 1,
+            'fetchAll' => true,
             'where'			=> [
                 ['>=', 'created_at', $preMonthTime]
             ],

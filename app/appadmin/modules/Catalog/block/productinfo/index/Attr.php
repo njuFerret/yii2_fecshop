@@ -55,6 +55,16 @@ class Attr
 
         return $this->_attrInfo;
     }
+    
+    public function getGroupGeneralAttr()
+    {
+        return Yii::$service->product->getGroupGeneralAttr($this->_currentAttrGroup);
+    }
+    
+    public function getGroupSpuAttr()
+    {
+        return Yii::$service->product->getGroupSpuAttr($this->_currentAttrGroup);
+    }
 
     public function getProductAttrGroupSelect()
     {
@@ -137,6 +147,7 @@ class Attr
                 ],
                 'require' => 1,
             ],
+            
             [
                 'label' => Yii::$service->page->translate->__('Long (CM)'),
                 'name'  => 'long',
@@ -174,7 +185,7 @@ class Attr
                 'require' => 0,
             ],
             [
-                'label' => Yii::$service->page->translate->__('Weight (KG)'),
+                'label' => Yii::$service->page->translate->__('Weight (G)'),
                 'name'  => 'weight',
                 'display' => [
                     'type' => 'inputString',
@@ -190,6 +201,14 @@ class Attr
                     'lang' => false,
                 ],
                 'require' => 0,
+            ],
+            [
+                'label' => Yii::$service->page->translate->__('Product Brand'),
+                'name'  => 'brand_id',
+                'display' => [
+                    'type' => 'select',
+                    'data' => Yii::$service->product->brand->getAllBrandIdAndNames(),
+                ],
             ],
             [
                 'label' => Yii::$service->page->translate->__('Status'),
@@ -301,7 +320,7 @@ class Attr
                 'label' => Yii::$service->page->translate->__('Special Begin'),
                 'name'  => 'special_from',
                 'display'=>[
-                    'type' => 'inputDate',
+                    'type' => 'inputDateTime',
                 ],
                 'require' => 0,
             ],
@@ -309,7 +328,7 @@ class Attr
                 'label' => Yii::$service->page->translate->__('Special End'),
                 'name'  => 'special_to',
                 'display'=>[
-                    'type' => 'inputDate',
+                    'type' => 'inputDateTime',
                 ],
                 'require' => 0,
             ],
@@ -342,6 +361,7 @@ class Attr
                 'name'  => 'meta_description',
                 'display' => [
                     'type' => 'textarea',
+                    'notEditor' => true,
                     'lang' => true,
                     'rows'    => 14,
                     'cols'    => 100,

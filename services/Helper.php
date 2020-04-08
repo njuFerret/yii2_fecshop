@@ -98,4 +98,178 @@ class Helper extends Service
             return false;
         }
     }
+    
+    public function getCustomerIp()
+    {
+        return Yii::$app->request->userIP;
+    }
+    
+    
+    function createNoncestr( $length = 32 ){
+        $chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+        $str ="";
+        for ( $i = 0; $i < $length; $i++ )  {
+            $str.= substr($chars, mt_rand(0, strlen($chars)-1), 1);
+        }
+        return $str;
+    }
+    
+    // 递归删除文件夹以及里面的所有的子文件夹和子文件
+    public function deleteDir($path) {
+        if (is_dir($path)) {
+            //扫描一个目录内的所有目录和文件并返回数组
+            $dirs = scandir($path);
+            foreach ($dirs as $dir) {
+                //排除目录中的当前目录(.)和上一级目录(..)
+                if ($dir != '.' && $dir != '..') {
+                    //如果是目录则递归子目录，继续操作
+                    $sonDir = $path.'/'.$dir;
+                    if (is_dir($sonDir)) {
+                        //递归删除
+                        $this->deleteDir($sonDir);
+                        //目录内的子目录和文件删除后删除空目录
+                        @rmdir($sonDir);
+                    } else {
+                        //如果是文件直接删除
+                        @unlink($sonDir);
+                    }
+                }
+            }
+            @rmdir($path);
+        }
+        
+        return true;
+    }
+    
+    
+     /**
+     * 图片文件复制，注意，如果某个文件不是图片类型，则不会被复制（仅仅复制图片）
+     * 文件夹图片文件拷贝, 如果文件存在，则会被强制覆盖。
+     * @param string $sourcePath 来源文件夹
+     * @param string $targetPath 目的地文件夹
+     * @param boolean $isForce 是否强制复制
+     * @return bool
+     */
+    public function copyDirImage($sourcePath, $targetPath, $isForce = true)
+    {
+        if (empty($sourcePath) || empty($targetPath))
+        {
+            return false;
+        }
+     
+        $dir = opendir($sourcePath);
+        $this->dir_mkdir($targetPath);
+        while (false !== ($file = readdir($dir)))
+        {
+            if (($file != '.') && ($file != '..'))
+            {
+                $sourcePathFile = $sourcePath . '/' . $file;
+                $targetPathFile = $targetPath . '/' . $file;
+                if (is_dir($sourcePathFile)){
+                    $this->copyDirImage($sourcePathFile, $targetPathFile);
+                } else if (Yii::$service->image->isAllowImgType($sourcePathFile, $file)){
+                    if ($isForce) {
+                        copy($sourcePathFile, $targetPathFile);
+                    } else if (!file_exists($targetPathFile)) {
+                        copy($sourcePathFile, $targetPathFile);
+                    } else {
+                        Yii::$service->helper->errors->add('target path:' . $targetPathFile . ' is exist.');
+                    }
+                    
+                } else {
+                    Yii::$service->helper->errors->add('file is not image:' . $sourcePathFile);
+                }
+            }
+        }
+        closedir($dir);
+     
+        return true;
+    }
+    
+     /**
+     * 文件夹文件拷贝
+     *
+     * @param string $sourcePath 来源文件夹
+     * @param string $targetPath 目的地文件夹
+     * @param boolean $isForce 是否强制复制
+     * @return bool
+     */
+    public function copyDir($sourcePath, $targetPath, $isForce = true)
+    {
+        if (empty($sourcePath) || empty($targetPath))
+        {
+            return false;
+        }
+     
+        $dir = opendir($sourcePath);
+        $this->dir_mkdir($targetPath);
+        while (false !== ($file = readdir($dir)))
+        {
+            if (($file != '.') && ($file != '..')) {
+                $sourcePathFile = $sourcePath . '/' . $file;
+                $targetPathFile = $targetPath . '/' . $file;
+                if (is_dir( $sourcePathFile)) {
+                    $this->copyDir( $sourcePathFile, $targetPathFile);
+                } else {
+                    //copy($sourcePath . '/' . $file, $targetPath . '/' . $file);
+                    if ($isForce) {
+                        copy($sourcePathFile, $targetPathFile);
+                    } else if (!file_exists($targetPathFile)) {
+                        copy($sourcePathFile, $targetPathFile);
+                    } else {
+                        Yii::$service->helper->errors->add('target path:' . $targetPathFile . ' is exist.');
+                    }
+                }
+            }
+        }
+        closedir($dir);
+     
+        return true;
+    }
+    
+     
+    /**
+     * 创建文件夹
+     *
+     * @param string $path 文件夹路径
+     * @param int $mode 访问权限
+     * @param bool $recursive 是否递归创建
+     * @return bool
+     */
+    public function dir_mkdir($path = '', $mode = 0777, $recursive = true)
+    {
+        clearstatcache();
+        if (!is_dir($path))
+        {
+            mkdir($path, $mode, $recursive);
+            return chmod($path, $mode);
+        }
+     
+        return true;
+    }
+    
+    
+    
+    public function scanAllDirSubFile($dir, $subDir='/')
+    {	
+        if(is_dir($dir)){
+            $files = array();
+            $child_dirs = scandir($dir);
+            foreach ($child_dirs as $child_dir){
+                //'.'和'..'是Linux系统中的当前目录和上一级目录，必须排除掉，  
+                //否则会进入死循环，报segmentation falt 错误
+                if($child_dir != '.' && $child_dir != '..'){
+                    if(is_dir($dir.'/'.$child_dir)){
+                        //$files[$child_dir] = my_scandir($dir.'/'.$child_dir);
+                        $files = array_merge($files, $this->scanAllDirSubFile($dir.'/'.$child_dir, $subDir.$child_dir.'/'));
+                    }else{
+                        $files[] = $subDir.$child_dir;
+                    }
+                }
+            }
+            return $files;
+        }else{
+            return $subDir.$dir;
+        }
+    }
 }

@@ -30,8 +30,9 @@ class StandardController extends AppserverController
         }
         $payment_method = Yii::$service->payment->paypal->standard_payment_method;
         Yii::$service->payment->setPaymentMethod($payment_method);
-        
-        return $this->getBlock()->startPayment();
+        $increment_id = Yii::$app->request->post('increment_id');
+        Yii::$service->order->setCurrentOrderIncrementId($increment_id);
+        return $this->getBlock()->startPayment($increment_id);
     }
     /**
      * 2.Review  从paypal确认后返回的部分

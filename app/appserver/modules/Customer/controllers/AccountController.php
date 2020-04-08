@@ -74,7 +74,7 @@ class AccountController extends AppserverTokenController
             return $responseData;
         }
         Yii::$service->customer->logoutByAccessToken();
-        Yii::$service->cart->clearCart();
+        //Yii::$service->cart->clearCart();
         $code = Yii::$service->helper->appserver->status_success;
         $data = [];
         $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
@@ -90,9 +90,12 @@ class AccountController extends AppserverTokenController
         if(Yii::$app->request->getMethod() === 'OPTIONS'){
             return [];
         }
-        $forgotPasswordParam = \Yii::$app->getModule('customer')->params['forgotPassword'];
-        $forgotCaptcha = isset($forgotPasswordParam['forgotCaptcha']) ? $forgotPasswordParam['forgotCaptcha'] : false;
-
+        //$forgotPasswordParam = \Yii::$app->getModule('customer')->params['forgotPassword'];
+        //$forgotCaptcha = isset($forgotPasswordParam['forgotCaptcha']) ? $forgotPasswordParam['forgotCaptcha'] : false;
+        $appName = Yii::$service->helper->getAppName();
+        $forgotCaptcha = Yii::$app->store->get($appName.'_account', 'forgotPasswordCaptcha');
+        $forgotCaptcha = ($forgotCaptcha == Yii::$app->store->enable)  ? true : false;
+        
         $code = Yii::$service->helper->appserver->status_success;
         $data = [
             'forgotCaptchaActive' => $forgotCaptcha,
@@ -102,5 +105,7 @@ class AccountController extends AppserverTokenController
         return $responseData;
         
     }
+    
+    
     
 }

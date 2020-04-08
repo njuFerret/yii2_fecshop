@@ -45,8 +45,18 @@ class RegisterController extends AppserverController
     public function sendRegisterEmail($param)
     {
         if ($param) {
-            //Email::sendRegisterEmail($param);
-            Yii::$service->email->customer->sendRegisterEmail($param);
+            if (Yii::$service->email->customer->registerAccountIsNeedEnableByEmail) {
+                $registerEnableToken = Yii::$service->customer->generateRegisterEnableToken($param['email']);
+                if ($registerEnableToken) {
+                    $param['register_enable_token'] = $registerEnableToken;
+                    Yii::$service->email->customer->sendRegisterEmail($param);
+                    return true;
+                }
+            } else {
+                Yii::$service->email->customer->sendRegisterEmail($param);
+                
+                return true;
+            }
         }
     }
     
@@ -56,8 +66,11 @@ class RegisterController extends AppserverController
         $minPassLength = Yii::$service->customer->getRegisterPassMinLength();
         $maxPassLength = Yii::$service->customer->getRegisterPassMaxLength();
             
-        $registerParam = \Yii::$app->getModule('customer')->params['register'];
-        $registerPageCaptcha = isset($registerParam['registerPageCaptcha']) ? $registerParam['registerPageCaptcha'] : false;
+        //$registerParam = \Yii::$app->getModule('customer')->params['register'];
+        //$registerPageCaptcha = isset($registerParam['registerPageCaptcha']) ? $registerParam['registerPageCaptcha'] : false;
+        $appName = Yii::$service->helper->getAppName();
+        $registerPageCaptcha = Yii::$app->store->get($appName.'_account', 'registerPageCaptcha');
+        $registerPageCaptcha = ($registerPageCaptcha == Yii::$app->store->enable)  ? true : false;
         $errorArr = [];
         // 如果开启了验证码，但是验证码验证不正确就报错返回。
         if ($registerPageCaptcha && !$captcha) {
@@ -102,6 +115,11 @@ class RegisterController extends AppserverController
         $lastname   = Yii::$app->request->post('lastname');
         $captcha    = Yii::$app->request->post('captcha');
         $is_subscribed = Yii::$app->request->post('is_subscribed');
+        $domain       = Yii::$app->request->post('domain');
+        $domain = trim($domain,'/').'/';
+        //echo $domain;exit;
+        Yii::$service->helper->setAppServiceDomain($domain);
+        
         $is_subscribed = $is_subscribed ? 1 : 2;
         $errorInfo = $this->validateParam($email,$password,$firstname,$lastname,$captcha);
         if($errorInfo !== true){
@@ -123,25 +141,42 @@ class RegisterController extends AppserverController
             $param = \Yii::$service->helper->htmlEncode($param);
             $registerStatus = $this->register($param);
             if ($registerStatus) {
-                $params_register = Yii::$app->getModule('customer')->params['register'];
+                //$params_register = Yii::$app->getModule('customer')->params['register'];
+                $appName = Yii::$service->helper->getAppName();
+                $registerSuccessAutoLogin = Yii::$app->store->get($appName.'_account', 'registerSuccessAutoLogin');
+                //$registerSuccessRedirectUrlKey = Yii::$app->store->get($appName.'_account', 'registerSuccessRedirectUrlKey');
+                
                 $redirect = '/customer/account/login';
-                // 注册成功后，是否自动登录
-                if (isset($params_register['successAutoLogin']) && $params_register['successAutoLogin']) {
-                    $accessToken = Yii::$service->customer->loginAndGetAccessToken($email,$password);
-                    if($accessToken){
-                        $redirect = '/customer/account/index';
+                
+                // 是否需要邮件激活？
+                if (Yii::$service->email->customer->registerAccountIsNeedEnableByEmail) {
+                    $correctMessage = Yii::$service->page->translate->__("Your account registration is successful, we sent an email to your email, you need to login to your email and click the activation link to activate your account. If you have not received the email, you can resend the email by {url_click_here_before}clicking here{url_click_here_end} {end_text}", ['url_click_here_before' => '<span  class="email_register_resend" >',  'url_click_here_end' => '</span>', 'end_text'=> '<span class="resend_text"></span>' ]);
+                    Yii::$service->page->message->AddCorrect($correctMessage); 
+                    $code = Yii::$service->helper->appserver->account_register_disable;
+                    $data = [
+                        'content' => 'register success and need enable by email',
+                        //'redirect' => $redirect,
+                    ];
+                    $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+                    
+                    return $responseData;
+                } else { // 如果不需要邮件激活？
+                    // 注册成功后，是否自动登录
+                    if ($registerSuccessAutoLogin == Yii::$app->store->enable) {
+                        $accessToken = Yii::$service->customer->loginAndGetAccessToken($email,$password);
+                        if($accessToken){
+                            $redirect = '/customer/account/index';
+                        }
                     }
+                    $code = Yii::$service->helper->appserver->status_success;
+                    $data = [
+                        'content' => 'register success',
+                        //'redirect' => $redirect,
+                    ];
+                    $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+                    
+                    return $responseData;
                 }
-                
-                $code = Yii::$service->helper->appserver->status_success;
-                $data = [
-                    'content' => 'register success',
-                    //'redirect' => $redirect,
-                ];
-                $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
-                
-                return $responseData;
-            
             }else{
                 $code = Yii::$service->helper->appserver->account_register_fail;
                 $data = [
@@ -172,9 +207,14 @@ class RegisterController extends AppserverController
             
             return $responseData;
         }
-        $registerParam = \Yii::$app->getModule('customer')->params['register'];
-        $registerPageCaptcha = isset($registerParam['registerPageCaptcha']) ? $registerParam['registerPageCaptcha'] : false;
-
+        //$registerParam = \Yii::$app->getModule('customer')->params['register'];
+        //$registerPageCaptcha = isset($registerParam['registerPageCaptcha']) ? $registerParam['registerPageCaptcha'] : false;
+        $appName = Yii::$service->helper->getAppName();
+        $registerPageCaptcha = Yii::$app->store->get($appName.'_account', 'registerSuccessAutoLogin');
+        $registerPageCaptcha = ($registerPageCaptcha == Yii::$app->store->enable)  ? true : false;
+        //$registerParam = \Yii::$app->getModule('customer')->params['register'];
+        //$registerPageCaptcha = isset($registerParam['registerPageCaptcha']) ? $registerParam['registerPageCaptcha'] : false;
+        
         $code = Yii::$service->helper->appserver->status_success;
         $data = [
             'minNameLength' => Yii::$service->customer->getRegisterNameMinLength(),
@@ -188,4 +228,55 @@ class RegisterController extends AppserverController
         return $responseData;
     }
     
+    public function actionTokenenable()
+    {
+        $registerToken = Yii::$app->request->get('registerToken');
+        $status = Yii::$service->customer->registerEnableByTokenAndClearToken($registerToken);
+        if (!$status) {
+            $code = Yii::$service->helper->appserver->account_register_enable_token_invalid;
+            $data = [
+                'error' => 'Register Account Enable Token is Expired',
+            ];
+            $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+            
+            return $responseData;
+        
+        }
+        $code = Yii::$service->helper->appserver->status_success;
+        $data = [];
+        $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+        
+        return $responseData;
+    }
+    
+    
+    public function actionResendregisteremail()
+    {
+        $email = Yii::$app->request->get('email');
+        $domain       = Yii::$app->request->get('domain');
+        $domain = trim($domain,'/').'/';
+        //echo $domain;exit;
+        Yii::$service->helper->setAppServiceDomain($domain);
+        
+        $identity = Yii::$service->customer->getAvailableUserIdentityByEmail($email);
+        
+        if ($identity['status'] != $identity::STATUS_REGISTER_DISABLE) {
+            $code = Yii::$service->helper->appserver->account_register_send_email_fail;
+            $data = [];
+            $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+            
+            return $responseData;
+        }
+        
+        $this->sendRegisterEmail($identity);
+        
+        $code = Yii::$service->helper->appserver->status_success;
+        $data = [];
+        $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+        
+        return $responseData;
+        
+    }
+    
+   
 }

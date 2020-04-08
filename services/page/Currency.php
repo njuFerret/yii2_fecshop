@@ -50,7 +50,7 @@ class Currency extends Service
      * 后台产品统一使用的美元填写产品价格，但是我的网站前端的默认货币为人民币。
      * 该值需要在配置文件中进行配置.
      */
-    public $defaultCurrency = 'USD';
+    public $defaultCurrency;
 
     /**
      * 当前的货币简码
@@ -61,7 +61,29 @@ class Currency extends Service
      * 根据配置，保存所有货币的配置信息。
      */
     protected $_currencys;
-
+    
+    public function init()
+    {
+        parent::init();
+        // init default and base currency
+        $this->defaultCurrency = Yii::$app->store->get('base_info', 'default_currency');
+        $this->baseCurrecy = Yii::$app->store->get('base_info', 'base_currency');
+        
+        // init all currency
+        $currencys = Yii::$app->store->get('currency');
+        if (is_array($currencys)) {
+            foreach ($currencys as $currency) {
+                $currency_code = $currency['currency_code'];
+                $currency_symbol = $currency['currency_symbol'];
+                $currency_rate = $currency['currency_rate'];
+                $this->currencys[$currency_code] = [
+                    'rate' => $currency_rate,
+                    'symbol' => $currency_symbol
+                ];
+            }
+        }
+    }
+    
     /**
      * @param $currencyCode | string 货币简码，譬如USD,RMB等
      * @return array
@@ -80,7 +102,14 @@ class Currency extends Service
             }
         }
         if ($currencyCode) {
-            return $this->_currencys[$currencyCode];
+            if (isset($this->_currencys[$currencyCode])) {
+                
+                return $this->_currencys[$currencyCode];
+            } else {
+                $currencyCode = $this->defaultCurrency;
+                
+                return $this->_currencys[$currencyCode];
+            }
         }
 
         return $this->_currencys;
@@ -107,7 +136,15 @@ class Currency extends Service
             return $this->currencys[$currencyCode]['symbol'];
         }
     }
-
+    /**
+     * 得到默认的货币符号，譬如： ￥, $
+     */
+    public function getBaseSymbol()
+    {
+        if (isset($this->currencys[$this->baseCurrecy]['symbol'])) {
+            return $this->currencys[$this->baseCurrecy]['symbol'];
+        }
+    }
     /**
      * property $price|Float ，默认货币的价格
      * Get current currency price.  price format is two decimal places,
@@ -119,7 +156,7 @@ class Currency extends Service
     {
         $currencyCode  = $this->getCurrentCurrency();
         $currencyPrice = $this->getCurrencyPrice($price, $currencyCode);
-        if ($currencyPrice) {
+        if ($currencyPrice !== null) {
             return $currencyPrice;
         }
         /*
@@ -144,6 +181,8 @@ class Currency extends Service
                 return bcmul($price, $rate, 2);
             }
         }
+        
+        return null;
     }
 
     /**
@@ -161,7 +200,7 @@ class Currency extends Service
         if (isset($this->currencys[$current_currency]['rate'])) {
             $rate = $this->currencys[$current_currency]['rate'];
             if ($rate) {
-                return bcmul($current_price, $rate, 2);
+                return bcdiv($current_price, $rate, 2);
             }
         }
     }
@@ -229,10 +268,37 @@ class Currency extends Service
             $currencyCode = $this->defaultCurrency;
         }
         if ($currencyCode) {
-            Yii::$service->session->set(self::CURRENCY_CURRENT, $currencyCode);
+            if (!Yii::$service->store->isAppserver()) {
+                Yii::$service->session->set(self::CURRENCY_CURRENT, $currencyCode);
+            }
             $this->_currentCurrencyCode = $currencyCode;
             return true;
         }
+    }
+    
+    protected $appserverCurrencyHeaderName = 'fecshop-currency';
+    /**
+     * appserver端初始化currency
+     * 初始化货币services，直接从headers中取出来currency。进行set，这样currency就不会从session中读取
+     * fecshop-2版本对于appserver已经抛弃session servcies
+     */
+    public function appserverSetCurrentCurrency()
+    {
+        if ($this->_currentCurrencyCode) {
+            return true;
+        }
+        $header = Yii::$app->request->getHeaders();
+        $currentCurrencyCode = $header[$this->appserverCurrencyHeaderName];
+        
+        if (!$currentCurrencyCode) {
+            $currentCurrencyCode = $this->defaultCurrency;
+        }
+        if (!$this->isCorrectCurrency($currentCurrencyCode)) {
+            $currentCurrencyCode = $this->defaultCurrency;
+        }
+        $this->_currentCurrencyCode = $currentCurrencyCode;
+        
+        Yii::$app->response->getHeaders()->set($this->appserverCurrencyHeaderName, $this->_currentCurrencyCode);
     }
 
     /**

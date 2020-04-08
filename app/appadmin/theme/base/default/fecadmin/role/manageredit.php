@@ -24,7 +24,7 @@ $this->title = 'Dashboard';
 <style>
     .group_resource li ul li{
         float:left;
-        margin:5px 0 0 0;
+        margin:10px 0 2px 0;
     }
     .group_resource{
         padding-left:10px;
@@ -39,6 +39,7 @@ $this->title = 'Dashboard';
     .line-resources{
         width:100%
     }
+    .dialog .tabsContent .edit_p label{min-width: 120px;}
 </style>
 
 <div class="pageContent">
@@ -53,12 +54,12 @@ $this->title = 'Dashboard';
                     </ul>
                 </div>
             </div>
-            <div class="tabsContent" style="height:100%;min-height:450px">
-                <div style="background-color:none;height:400px;" class="pageFormContent"  >
+            <div class="tabsContent" style="height: auto;min-height:450px">
+                <div style="background-color:none;height:400px;border:none;" class="pageFormContent"  >
                     <?= $editBar; ?>
                 </div>
                 <div class="menu_tree">
-                    <div style=" float:left; display:block; margin:10px; overflow:auto; width:900px; overflow:auto; border:solid 1px #CCC; line-height:21px; background:#FFF;">
+                    <div style=" float:left; display:block; margin:10px; overflow:auto; width:900px; overflow:auto; border: none; line-height:21px; background:#FFF;">
                         <ul  class="group_resource" >
                             <?php if (is_array($groupResources)):  ?>
                                 <?php foreach ($groupResources as $groupKey => $resources): ?>

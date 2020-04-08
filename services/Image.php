@@ -44,43 +44,83 @@ class Image extends Service
 
     protected $_maxUploadSize;
 
-    public $appbase;
+    // public $appbase;
+    public $commonBaseDir;
+    public $commonBaseDomain;
+    
+    /**
+     * @param $file | string, 图片文件路径
+     * @return boolean， 是否是允许的图片类型
+     */
+    public function isAllowImgType($file, $fileName)
+    {
+        $img = getimagesize($file);
+        $imgType = $img['mime'];
+
+        if (!in_array($imgType, $this->allowImgType)) {
+            
+            return false;
+        
+        }
+        // 文件后缀检查
+        $fileNameArr = explode('.', $fileName);
+        $fileSuffix = $fileNameArr[count($fileNameArr)-1];
+        $allowImgSuffix = $this->getAllowImgSuffix();
+        if (!in_array($fileSuffix, $allowImgSuffix)) {
+            
+            return false;
+        }
+        
+        return true;
+    }
+    public function getAllowImgSuffix()
+    {
+        $arr = [];
+        if (!is_array($this->allowImgType) || empty($this->allowImgType)) {
+            return [];
+        }
+        
+        foreach ($this->allowImgType as $one) {
+            $oneArr = explode('/',$one);
+            $arr[] = $oneArr[1];
+        }
+        
+        return $arr;
+    }
+    
+    public function init()
+    {
+        parent::init();
+        
+        $this->commonBaseDomain = Yii::$app->store->get('base_info', 'image_domain');
+    }
 
     /**
      * @param $str | String 图片的相对路径
      * @param $app | String @appimage下面的文件夹的名称。各个名称对应各个入口的名字，譬如common appfront appadmin等
      * @return 返回图片的绝对路径。
      */
-    protected function actionGetImgDir($str = '', $app = 'common')
+    protected function actionGetImgDir($str = '')  // , $app = 'common' 第二个参数废弃
     {
-        if ($appbase = $this->appbase) {
-            if (isset($appbase[$app]['basedir'])) {
-                if ($str) {
-                    return Yii::getAlias($appbase[$app]['basedir'].'/'.$str);
-                }
-
-                return Yii::getAlias($appbase[$app]['basedir']);
-            }
+        if ($str) {
+            return Yii::getAlias($this->commonBaseDir) . '/'.$str;
         }
+
+        return Yii::getAlias($this->commonBaseDir);
     }
 
     /**
      * @param $str | String 图片的相对路径
      * @param $app | String @appimage下面的文件夹的名称。各个名称对应各个入口的名字，譬如common appfront appadmin等
      * @return 返回图片的完整URL
-     */
-    protected function actionGetImgUrl($str, $app = 'common')
+     */ 
+    protected function actionGetImgUrl($str)   // , $app = 'common' 第二个参数废弃
     {
-        //echo "$str,$app";
-        if ($appbase = $this->appbase) {
-            if (isset($appbase[$app]['basedomain'])) {
-                if ($str) {
-                    return $appbase[$app]['basedomain'].'/'.$str;
-                }
-
-                return $appbase[$app]['basedomain'];
-            }
+        if ($str) {
+            return $this->commonBaseDomain.'/'.$str;
         }
+
+        return $this->commonBaseDomain;
     }
 
     /**
@@ -193,7 +233,10 @@ class Image extends Service
         $size = $FILE['size'];
         $file = $FILE['tmp_name'];
         $name = $FILE['name'];
-        $name = $this->generateImgName($name);
+        $newName = $this->generateImgName($name);
+        if (!$newName) {
+            throw new InvalidValueException('generate img name fail');
+        }
         
         if ($size > $this->getMaxUploadSize()) {
             throw new InvalidValueException('upload image is to max than'. $this->getMaxUploadSize().' MB');
@@ -201,13 +244,12 @@ class Image extends Service
             throw new InvalidValueException('file type is empty.');
         } elseif ($img = getimagesize($file)) {
             $imgType = $img['mime'];
-
-            if (!in_array($imgType, $this->allowImgType)) {
+            if (!$this->isAllowImgType($file, $name)) {
                 throw new InvalidValueException('image type is not allow for '.$imgType);
             }
         }
         // process image name.
-        $imgSavedRelativePath = $this->getImgSavedRelativePath($name);
+        $imgSavedRelativePath = $this->getImgSavedRelativePath($newName);
         $isMoved = @move_uploaded_file($file, $this->GetCurrentBaseImgDir().$imgSavedRelativePath);
         if ($isMoved) {
             $imgUrl = $this->getUrlByRelativePath($imgSavedRelativePath);

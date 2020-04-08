@@ -86,6 +86,14 @@ class Customer extends Service
         list($this->_customerModelName, $this->_customerModel) = Yii::mapGet($this->_customerModelName);
         list($this->_customerLoginModelName, $this->_customerLoginModel) = Yii::mapGet($this->_customerLoginModelName);
         list($this->_customerRegisterModelName, $this->_customerRegisterModel) = Yii::mapGet($this->_customerRegisterModelName);
+        
+        $appName = Yii::$service->helper->getAppName();
+        $this->customer_register = [
+            'min_name_length' => (int)Yii::$app->store->get($appName.'_account', 'min_name_length'),  // 注册账号的firstname, lastname的最小长度
+            'max_name_length' => (int)Yii::$app->store->get($appName.'_account', 'max_name_length'), // 注册账号的firstname, lastname的最大长度
+            'min_pass_length' => (int)Yii::$app->store->get($appName.'_account', 'min_pass_length'),  // 注册账号的密码的最小长度
+            'max_pass_length' => (int)Yii::$app->store->get($appName.'_account', 'max_pass_length'), // 注册账号的密码的最大长度
+        ];
     }
 
     /**
@@ -188,10 +196,16 @@ class Customer extends Service
         if ($model->validate()) {
             $model->created_at = time();
             $model->updated_at = time();
+            if (Yii::$service->email->customer->registerAccountIsNeedEnableByEmail) {
+                $model->generateRegisterEnableToken();
+                $model->status = $model::STATUS_REGISTER_DISABLE;
+            }
 
             $saveStatus = $model->save();
             if (!$saveStatus) {
-                Yii::$service->helper->errors->add('identity is not right');
+                $errors = $model->errors;
+                Yii::$service->helper->errors->addByModelErrors($errors);
+                
                 return false;
             }
             // 如果用户勾选了订阅邮件，那么添加到订阅
@@ -209,6 +223,7 @@ class Customer extends Service
             return false;
         }
     }
+    
 
     /**
      * Check whether the given email is registered
@@ -237,6 +252,13 @@ class Customer extends Service
         $primaryKey = $this->getPrimaryKey();
         $primaryVal = isset($param[$primaryKey]) ? $param[$primaryKey] : '';
         if ($primaryVal) {
+            $model = $this->_customerRegisterModel;
+            $model->attributes = $param;
+            if (!$model->validate()) {
+                $errors = $model->errors;
+                Yii::$service->helper->errors->addByModelErrors($errors);
+                return false;
+            }
             $model = $this->getByPrimaryKey($primaryVal);
             if ($model[$primaryKey]) {
                 unset($param[$primaryKey]);
@@ -255,6 +277,10 @@ class Customer extends Service
 
                     return false;
                 }
+            }
+        } else {
+            if ($this->register($param)) {
+                return true;
             }
         }
         return false;
@@ -344,12 +370,37 @@ class Customer extends Service
 
             return null;
         }
+        if (strlen($password) < 6  || strlen($password) > 30) {
+            Yii::$service->helper->errors->add('Password length must be greater than 6, less than 30');
+
+            return null;
+        }
         $customerModel->setPassword($password);
         $customerModel->removePasswordResetToken();
         $customerModel->updated_at = time();
         $customerModel->save();
 
         return true;
+    }
+
+    /**
+     * @param $password|string
+     * @param $customerId|int or String or Object
+     * change  customer password.
+     * 更改密码，然后，清空token
+     */
+    protected function actionRegisterEnableByTokenAndClearToken($token)
+    {
+        $identity = $this->findByRegisterEnableToken($token);
+        if (!$identity['id']) {
+            Yii::$service->helper->errors->add('token is invalid');
+             
+            return false;
+        }
+        $identity->status = $identity::STATUS_ACTIVE;
+        $identity->updated_at = time();
+        
+        return $identity->save();
     }
 
     /**
@@ -380,6 +431,17 @@ class Customer extends Service
             return null;
         }
     }
+    // 得到可用的账户
+    protected function actionGetAvailableUserIdentityByEmail($email)
+    {
+        $one = $this->_customerModel->findAvailableByEmail($email);
+        if ($one['email']) {
+            return $one;
+        } else {
+            return null;
+        }
+    }
+    
 
     /**
      * 生成resetToken，用来找回密码
@@ -403,6 +465,29 @@ class Customer extends Service
         }
         return false;
     }
+    
+    /**
+     * 生成resetToken，用来找回密码
+     * @param string|IdentityInterface $identify identity can be customer email, or customer object
+     * @return string|null 生成的resetToken，如果生成失败返回false
+     */
+    protected function actionGenerateRegisterEnableToken($identify)
+    {
+        if (is_string($identify)) {
+            $email = $identify;
+            $one = $this->actionGetAvailableUserIdentityByEmail($email);
+        } else {
+            $one = $identify;
+        }
+        if ($one) {
+            $one->generateRegisterEnableToken();
+            $one->updated_at = time();
+            $one->save();
+
+            return $one->register_enable_token;
+        }
+        return false;
+    }
 
     /**
      * @param string $token the password reset token
@@ -412,6 +497,11 @@ class Customer extends Service
     protected function actionFindByPasswordResetToken($token)
     {
         return $this->_customerModel->findByPasswordResetToken($token);
+    }
+    
+    protected function actionFindByRegisterEnableToken($token)
+    {
+        return $this->_customerModel->findByRegisterEnableToken($token);
     }
 
     /**
@@ -447,7 +537,6 @@ class Customer extends Service
     protected function actionLoginSuccessRedirect($urlKey = '')
     {
         $url = $this->getLoginSuccessRedirectUrl();
-
         if ($url) {
             // 这个优先级最高
             // 在跳转之前，去掉这个session存储的值。跳转后，这个值必须失效。
@@ -580,7 +669,11 @@ class Customer extends Service
         if ($customer_one) {
             $loginStatus = \Yii::$app->user->login($customer_one);
             if ($loginStatus) {
-                return true;
+                $customer_one->generateAccessToken();
+                $customer_one->access_token_created_at = time();
+                $customer_one->save();
+
+                return $this->setHeaderAccessToken($customer_one->access_token);
             }
             // 不存在，注册。
         } else {
@@ -596,10 +689,7 @@ class Customer extends Service
             ];
             $registerStatus = Yii::$service->customer->register($registerData);
             if ($registerStatus) {
-                $loginStatus = Yii::$service->customer->login($registerData);
-                if ($loginStatus) {
-                    return true;
-                }
+                return Yii::$service->customer->loginAndGetAccessToken($registerData['email'], $registerData['password']);
             }
         }
 
@@ -621,7 +711,50 @@ class Customer extends Service
         //return $authnum;
         return $authnum;
     }
-
+    
+    /**
+      * @param $identity | Object， customer model
+      * #param $duration 
+      * 通过identity 进行登陆账户
+      * 通过
+      */
+    public function loginByIdentityAndGetAccessToken($identity, $wx_session_key='', $duration = 0)
+    {
+        $header = Yii::$app->request->getHeaders();
+        if (isset($header['access-token']) && $header['access-token']) {
+            $accessToken = $header['access-token'];
+        }
+        // 如果request header中有access-token，则查看这个 access-token 是否有效
+        if ($accessToken) {
+            $access_token_identity = Yii::$app->user->loginByAccessToken($accessToken);
+            if ($access_token_identity !== null) {
+                $access_token_created_at = $access_token_identity->access_token_created_at;
+                $timeout = Yii::$service->session->timeout;
+                if ($access_token_created_at + $timeout > time()) {
+                    return $accessToken;
+                }
+            }
+        }
+        // 执行登陆
+        if (!$duration) {
+            if (Yii::$service->session->timeout) {
+                $duration = Yii::$service->session->timeout;
+            }
+        }
+        //var_dump($identity);exit;
+        if (\Yii::$app->user->login($identity, $duration)) {
+            $identity->generateAccessToken();
+            $identity->access_token_created_at = time();
+            $identity->wx_session_key = $wx_session_key;
+            $identity->save();
+            // 执行购物车合并等操作。
+            Yii::$service->cart->mergeCartAfterUserLogin();
+            $this->setHeaderAccessToken($identity->access_token);
+            return $identity->access_token;
+            
+        }
+    }
+    
     /** AppServer 部分使用的函数
      * @param $email | String
      * @param $password | String
@@ -702,6 +835,24 @@ class Customer extends Service
         }
         return null;
     }
+    
+    /**
+     * @param $openid | string 
+     * 通过微信的openid 得到 user
+     */
+    protected function actionGetByWxOpenid($openid)
+    {
+        $one = $this->_customerModel->findOne(['wx_openid' => $openid]);
+        $primaryKey = $this->getPrimaryKey();
+        if ($one[$primaryKey]) {
+            
+            return $one;
+        } 
+        
+        return null;
+    }
+    
+    
 
     /**
      * 通过accessToek的方式，进行登出从操作。
@@ -717,6 +868,8 @@ class Customer extends Service
                 $identity->save();
             }
             $userComponent->switchIdentity(null);
+            // 刷新uuid
+            Yii::$service->session->reflushUUID();
         }
 
         return $userComponent->getIsGuest();

@@ -61,6 +61,8 @@ class ProductController extends AppserverController
                     'class' => 'yii\filters\PageCache',
                     'only' => ['index'],
                 ];
+                
+                return $behaviors;
             }
             if (is_array($get) && !empty($get) && is_array($cacheUrlParam)) {
                 foreach ($get as $k=>$v) {
@@ -73,13 +75,14 @@ class ProductController extends AppserverController
             }
             $store = Yii::$service->store->currentStore;
             $currency = Yii::$service->page->currency->getCurrentCurrency();
+            $langCode = Yii::$service->store->currentLangCode;
             $behaviors[] =  [
                 'enabled' => true,
                 'class' => 'yii\filters\PageCache',
                 'only' => ['index'],
                 'duration' => $timeout,
                 'variations' => [
-                    $store, $currency, $get_str, $product_id,
+                    $store, $currency, $get_str, $product_id, $langCode
                 ],
                 //'dependency' => [
                 //	'class' => 'yii\caching\DbDependency',
@@ -89,6 +92,37 @@ class ProductController extends AppserverController
         }
 
         return $behaviors;
+    }
+    
+    public function actionGetfav()
+    {
+        if(Yii::$app->request->getMethod() === 'OPTIONS'){
+            return [];
+        }
+        if(Yii::$app->user->isGuest){
+            $code = Yii::$service->helper->appserver->account_no_login_or_login_token_timeout;
+            $data = [];
+            $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+            
+            return $responseData;
+        }
+        $product_id = Yii::$app->request->get('product_id');
+        $customer_id = Yii::$app->user->identity->id;
+        if ($product_id && $customer_id) {
+            $one = Yii::$service->product->favorite->getByProductIdAndUserId($product_id, $customer_id);
+            $fav = 1;
+            if (!$one['product_id']) {
+                $fav = 2;
+            }
+            $code = Yii::$service->helper->appserver->status_success;
+            $data = [
+                'fav' => $fav,
+            ];
+            $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+            
+            return $responseData;
+        }
+        
     }
     
     public function actionFavorite(){
@@ -103,25 +137,48 @@ class ProductController extends AppserverController
             return $responseData;
         }
         $product_id = Yii::$app->request->get('product_id');
+        $favType = Yii::$app->request->get('type');
         $identity   = Yii::$app->user->identity;
         $user_id    = $identity->id;
-        $addStatus = Yii::$service->product->favorite->add($product_id, $user_id);
-        if (!$addStatus) {
-            $code = Yii::$service->helper->appserver->product_favorite_fail;
-            $data = [];
-            $message = Yii::$service->helper->errors->get(true);
-            $responseData = Yii::$service->helper->appserver->getResponseData($code, $data,$message);
-            
-            return $responseData;
-        }else{
-            $code = Yii::$service->helper->appserver->status_success;
-            $data = [
-                'content' => 'success',
-            ];
-            $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
-            
-            return $responseData;
+        if ($favType == 'del') {
+            $delStatus = Yii::$service->product->favorite->removeByProductIdAndUserId($product_id, $user_id);
+            if (!$delStatus) {
+                $code = Yii::$service->helper->appserver->product_favorite_fail;
+                $data = [];
+                $message = Yii::$service->helper->errors->get(true);
+                $responseData = Yii::$service->helper->appserver->getResponseData($code, $data,$message);
+                
+                return $responseData;
+            }else{
+                $code = Yii::$service->helper->appserver->status_success;
+                $data = [
+                    'content' => 'success',
+                ];
+                $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+                
+                return $responseData;
+            }
+        } else {
+            $addStatus = Yii::$service->product->favorite->add($product_id, $user_id);
+            if (!$addStatus) {
+                $code = Yii::$service->helper->appserver->product_favorite_fail;
+                $data = [];
+                $message = Yii::$service->helper->errors->get(true);
+                $responseData = Yii::$service->helper->appserver->getResponseData($code, $data,$message);
+                
+                return $responseData;
+            }else{
+                $code = Yii::$service->helper->appserver->status_success;
+                $data = [
+                    'content' => 'success',
+                ];
+                $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+                
+                return $responseData;
+            }
         }
+        
+        
         // 收藏失败，需要登录
         
         
@@ -134,13 +191,15 @@ class ProductController extends AppserverController
         if(Yii::$app->request->getMethod() === 'OPTIONS'){
             return [];
         }
+        $productPrimaryKey = Yii::$service->product->getPrimaryKey();
         /**
          * 通过Yii::mapGet() 得到重写后的class类名以及对象。Yii::mapGet是在文件@fecshop\yii\Yii.php中
          */
         list($this->_reviewHelperName,$this->_reviewHelper) = Yii::mapGet($this->_reviewHelperName);  
         
-        $productImgSize = Yii::$app->controller->module->params['productImgSize'];
-        //$productImgMagnifier = Yii::$app->controller->module->params['productImgMagnifier'];
+        $appName = Yii::$service->helper->getAppName();
+        $middle_img_width = Yii::$app->store->get($appName.'_catalog','product_middle_img_width');
+        
         if(!$this->initProduct()){
             $code = Yii::$service->helper->appserver->product_not_active;
             $data = '';
@@ -148,6 +207,7 @@ class ProductController extends AppserverController
             
             return $responseData;
         }
+        $productPrimaryKey = Yii::$service->product->getPrimaryKey();
         $reviewHelper = $this->_reviewHelper;
         $reviewHelper::initReviewConfig();
         $ReviewAndStarCount = $reviewHelper::getReviewAndStarCount($this->_product);
@@ -173,7 +233,6 @@ class ProductController extends AppserverController
             $main_arr[] = $image['main'];
             $gallerys = $main_arr;
         }
-        $middle_img_width = $productImgSize['middle_img_width'];
         if(is_array($gallerys) && !empty($gallerys)){
             foreach($gallerys as $gallery){
                 $image = $gallery['image'];
@@ -182,15 +241,18 @@ class ProductController extends AppserverController
         }
         $custom_option = $this->getCustomOption($this->_product['custom_option'],$middle_img_width); 
         $reviewHelper = new ReviewHelper;
-        $reviewHelper->product_id = $this->_product['_id'];
+        $reviewHelper->product_id = $this->_product[$productPrimaryKey];
         $reviewHelper->spu = $this->_product['spu'];
         $productReview = $reviewHelper->getLastData();
         $code = Yii::$service->helper->appserver->status_success;
+        $productImage = isset($this->_product['image']['main']['image']) ? $this->_product['image']['main']['image'] : '' ;
+                
         $data = [
             'product' => [
                 'groupAttrArr'              => $groupAttrArr,
                 'name'                      => Yii::$service->store->getStoreAttrVal($this->_product['name'], 'name'),
                 'sku'                       => $this->_product['sku'],
+                'main_image' => Yii::$service->product->image->getResize($productImage,[120, 120],false),
                 'package_number'            => $this->_product['package_number'],
                 'spu'                       => $this->_product['spu'],
                 'thumbnail_img'             => $thumbnail_img,
@@ -206,7 +268,7 @@ class ProductController extends AppserverController
                 'options'                   => $this->getSameSpuInfo(),
                 'custom_option'             => $custom_option,
                 'description'               => Yii::$service->store->getStoreAttrVal($this->_product['description'], 'description'),
-                '_id'                       => (string)$this->_product['_id'],
+                '_id'                       => (string)$this->_product[$productPrimaryKey],
                 'buy_also_buy'              => $this->getProductBySkus(),
             ]
         ];
@@ -278,7 +340,7 @@ class ProductController extends AppserverController
         // 增加重量，长宽高，体积重等信息
         if ($this->_product['weight']) {
             $weightName = Yii::$service->page->translate->__('weight');
-            $gArr[$weightName] = $this->_product['weight'].' Kg';
+            $gArr[$weightName] = $this->_product['weight'].' g';
         }
         if ($this->_product['long']) {
             $longName = Yii::$service->page->translate->__('long');
@@ -294,7 +356,7 @@ class ProductController extends AppserverController
         }
         if ($this->_product['volume_weight']) {
             $volumeWeightName = Yii::$service->page->translate->__('volume weight');
-            $gArr[$volumeWeightName] = $this->_product['volume_weight'].' Kg';
+            $gArr[$volumeWeightName] = $this->_product['volume_weight'].' g';
         }
         if (is_array($groupAttrInfo)) {
             foreach ($groupAttrInfo as $attr => $info) {
@@ -310,6 +372,19 @@ class ProductController extends AppserverController
                     }
                     $attr = Yii::$service->page->translate->__($attr);
                     $gArr[$attr] = $attrVal;
+                } else if (isset($this->_product['attr_group_info']) && is_array($this->_product['attr_group_info'])) {
+                    $attr_group_info = $this->_product['attr_group_info'];
+                    if (isset($attr_group_info[$attr]) && $attr_group_info[$attr]) {
+                        $attrVal = $attr_group_info[$attr];
+                        // get translate 
+                        if (isset($info['display']['lang']) && $info['display']['lang'] && is_array($attrVal)) {
+                            $attrVal = Yii::$service->store->getStoreAttrVal($attrVal, $attr);
+                        } else if ($attrVal && !is_array($attrVal)) {
+                            $attrVal = Yii::$service->page->translate->__($attrVal);
+                        }
+                        $attr = Yii::$service->page->translate->__($attr);
+                        $gArr[$attr] = $attrVal;
+                    }
                 }
             }
         }
@@ -421,18 +496,7 @@ class ProductController extends AppserverController
     protected function getSpuData($select)
     {
         $spu = $this->_product['spu'];
-        $select = array_merge($select, $this->_productSpuAttrArr);
-
-        $filter = [
-            'select'    => $select,
-            'where'            => [
-                ['spu' => $spu],
-            ],
-            'asArray' => true,
-        ];
-        $coll = Yii::$service->product->coll($filter);
-
-        return $coll['coll'];
+        return Yii::$service->product->spuCollData($select, $this->_productSpuAttrArr, $spu);
     }
 
     /**
@@ -449,23 +513,31 @@ class ProductController extends AppserverController
         //var_dump($this->_productSpuAttrArr);exit;
         $this->_spuAttrShowAsImg = Yii::$service->product->getSpuImgAttr($this->_product['attr_group']);
         if (!is_array($this->_productSpuAttrArr) || empty($this->_productSpuAttrArr)) {
-            return;
+            return [];
         }
         // 当前的spu属性对应值数组 $['color'] = 'red'
 
         $this->_currentSpuAttrValArr = [];
         foreach ($this->_productSpuAttrArr as $spuAttr) {
-            $spuAttrVal = $this->_product[$spuAttr];
+            if (isset($this->_product['attr_group_info']) && $this->_product['attr_group_info']) {  // mysql
+                $attr_group_info = $this->_product['attr_group_info'];
+                $spuAttrVal = $attr_group_info[$spuAttr];
+            } else {
+                //$spuAttrVal = $this->_product[$spuAttr];
+                $spuAttrVal = isset($this->_product[$spuAttr]) ? $this->_product[$spuAttr] : '';
+            }
             if ($spuAttrVal) {
                 $this->_currentSpuAttrValArr[$spuAttr] = $spuAttrVal;
             } else {
                 // 如果某个spuAttr的值为空，则退出，这个说明产品数据有问题。
-                return;
+                return [];
             }
         }
         // 得到当前的spu下面的所有的值
-        $select = ['name', 'image', 'url_key'];
+        $productPrimaryKey = Yii::$service->product->getPrimaryKey();
+        $select = [$productPrimaryKey, 'name', 'image', 'url_key'];
         $data = $this->getSpuData($select);
+        //var_dump($data);
         $spuValColl = [];
         // 通过值，找到spu。
         $reverse_val_spu = [];
@@ -479,7 +551,7 @@ class ProductController extends AppserverController
 
                 //$active = 'class="active"';
                 $one['main_img'] = isset($one['image']['main']['image']) ? $one['image']['main']['image'] : '';
-                $one['url'] = '/catalog/product/'.(string)$one['_id'];
+                $one['url'] = '/catalog/product/'.(string)$one[$productPrimaryKey];
                 $reverse_val_spu[$reverse_key] = $one;
                 $showAsImgVal = $one[$this->_spuAttrShowAsImg];
                 if ($showAsImgVal) {
@@ -560,7 +632,8 @@ class ProductController extends AppserverController
         if ($active) {
             $return['active'] = 'current';
         }
-
+        $productPrimaryKey = Yii::$service->product->getPrimaryKey();
+        $return['_id'] = (string)$return[$productPrimaryKey];
         return $return;
     }
 
@@ -596,6 +669,12 @@ class ProductController extends AppserverController
                 }
             }
             if (!empty($d_arr)) {
+                // 不在里面的规格属性（新建产品添加的规格属性），添加进去
+                foreach ($data as $size=>$d) {
+                    if (!isset($d_arr[$size])) {
+                        $d_arr[$size] = $data[$size];
+                    }
+                }
                 return $d_arr;
             }
         }
@@ -673,7 +752,9 @@ class ProductController extends AppserverController
     // 面包屑导航
     protected function breadcrumbs($name)
     {
-        if (Yii::$app->controller->module->params['category_breadcrumbs']) {
+        $appName = Yii::$service->helper->getAppName();
+        $category_breadcrumbs = Yii::$app->store->get($appName.'_catalog','product_breadcrumbs');
+        if ($category_breadcrumbs == Yii::$app->store->enable) {
             $parent_info = Yii::$service->category->getAllParentInfo($this->_category['parent_id']);
             if (is_array($parent_info) && !empty($parent_info)) {
                 foreach ($parent_info as $info) {

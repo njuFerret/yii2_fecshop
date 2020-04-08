@@ -9,6 +9,7 @@
 ?>
 <div class="main container one-column">
 	<div class="col-main">
+		<?= Yii::$service->page->widget->render('base/breadcrumbs',$this); ?>
 		<div class="product_page">
 			<div class="product_view">
 				<input type="hidden" class="product_view_id" value="<?=  $_id ?>">
@@ -30,48 +31,12 @@
 					</div>
 					<div class="item_code"><?= Yii::$service->page->translate->__('Item Code:'); ?> <?= $sku; ?></div>
 					<div class="price_info">
-						<?php # 价格部分
-							$priceView = [
-								'view'	=> 'catalog/product/index/price.php'
-							];
-							$priceParam = [
-								'price_info' => $price_info,
-							];
-						?>
-						<?= Yii::$service->page->widget->render($priceView,$priceParam); ?>
+						<?= Yii::$service->page->widget->render('product/price', ['price_info' => $price_info]); ?>
 					
 					</div>
 					<div class="product_info_section">
 						<div class="product_options">
-							<?php # options部分
-								$optionsView = [
-									'view'	=> 'catalog/product/index/options.php'
-								];
-								$optionsParam = [
-									'options' => $options,
-								];
-							?>
-							<?= Yii::$service->page->widget->render($optionsView,$optionsParam); ?>
-						
-						</div>
-						
-						<div class="product_custom_options">
-							<?php # custom options部分
-								$optionsView = [
-									'class' =>  'fecshop\app\appfront\modules\Catalog\block\product\CustomOption',
-									'view'	=> 'catalog/product/index/custom_option.php',
-									'custom_option' 	=> $custom_option,
-									'attr_group'		=> $attr_group,
-									'product_id'		=> $_id ,
-									'middle_img_width' 	=> $media_size['middle_img_width'],
-								];
-								$optionsParam = [
-									
-								];
-								
-								
-							?>
-							<?= Yii::$service->page->widget->render($optionsView,$optionsParam); ?>
+							<?= Yii::$service->page->widget->render('product/options', ['options' => $options]); ?>
 						
 						</div>
 						
@@ -91,7 +56,7 @@
 							
 							<div class="myFavorite_nohove" id="myFavorite">
 								<i></i>
-								<a href="javascript:void(0)" url="<?= Yii::$service->url->getUrl('catalog/favoriteproduct/add'); ?>"  product_id="<?= $_id?>" class="addheart" id="divMyFavorite" rel="nofollow" >
+								<a href="javascript:void(0)" url="<?= Yii::$service->url->getUrl('catalog/favoriteproduct/add'); ?>"   class="addheart" id="divMyFavorite" rel="nofollow" >
 									<?= Yii::$service->page->translate->__('Add to Favorites'); ?>
 								</a>				
 							</div>
@@ -99,47 +64,26 @@
 						</div>
 					</div>
 					<div class="tier_price_info">
-						<?php # tier price 部分。
-							$priceView = [
-								'view'	=> 'catalog/product/index/tier_price.php'
-							];
-							$priceParam = [
-								'tier_price' => $tier_price,
-							];
-						?>
-						<?= Yii::$service->page->widget->render($priceView,$priceParam); ?>
-					
+						<?= Yii::$service->page->widget->render('product/tier_price', ['tier_price' => $tier_price]); ?>
 					</div>
 				</div>
 				<div class="media_img">
 					<div class="col-left ">
 						<?php # 图片部分。
-							$imageView = [
-								'view'	=> 'catalog/product/index/image.php'
-							];
 							$imageParam = [
 								'media_size' => $media_size,
 								'image' => $image_thumbnails,
 								'productImgMagnifier' => $productImgMagnifier,
 							];
 						?>
-						<?= Yii::$service->page->widget->render($imageView,$imageParam); ?>
+						<?= Yii::$service->page->widget->render('product/image',$imageParam); ?>
 					</div>
 				</div>
 				<div class="clear"></div>
 			</div>
 			
-			
 			<div>
-				<?php # tier price 部分。
-					$buyAlsoBuyView = [
-						'view'	=> 'catalog/product/index/buy_also_buy.php'
-					];
-					$buyAlsoBuyParam = [
-						'products' => $buy_also_buy,
-					];
-				?>
-				<?= Yii::$service->page->widget->render($buyAlsoBuyView,$buyAlsoBuyParam); ?>
+				<?= Yii::$service->page->widget->render('product/buy_also_buy', ['products' => $buy_also_buy]); ?>
 			</div>
 			
 			<div class="clear"></div>
@@ -177,29 +121,20 @@
 					</div>  
 					<div class="text-reviews" id="text-reviews" style="">
 						<?php # review部分。
-							$reviewView = [
-								'class' 		=> 'fecshop\app\appfront\modules\Catalog\block\product\Review',
-								'view'			=> 'catalog/product/index/review.php',
+							$reviewParam = [
 								'product_id' 	=> $_id,
 								'spu'			=> $spu,
 							];
+                            
 							$reviewParam['reviw_rate_star_info'] = $reviw_rate_star_info;
                             $reviewParam['review_count'] = $review_count;
                             $reviewParam['reviw_rate_star_average'] = $reviw_rate_star_average;
+                            // var_dump($reviewParam);exit;
 						?>
-						<?= Yii::$service->page->widget->render($reviewView,$reviewParam); ?>
+						<?= Yii::$service->page->widget->DiRender('product/review', $reviewParam); ?>
 					</div>  
 					<div class="text-questions" style="">
-						<?php # payment部分。
-							$paymentView = [
-								'view'			=> 'catalog/product/index/payment.php',
-							];
-							
-						?>
-						<?= Yii::$service->page->widget->render($paymentView); ?>
-					
-					
-						
+						<?= Yii::$service->page->widget->render('product/payment'); ?>
 					</div>  
 					<!--					
 					<div class="text-wholesale" style="width:100%;height:500px;background:yellow;text-align:center;">
@@ -253,7 +188,7 @@
 				addToCartUrl = "<?= Yii::$service->url->getUrl('checkout/cart/add'); ?>";
 				$data = {};
 				$data['custom_option'] 	= custom_option_json;
-				$data['product_id'] 	= "<?= $_id ?>";
+				$data['product_id'] 	= $('.product_view_id').val();
 				$data['qty'] 			= qty;
 				if (csrfName && csrfVal) {
 					$data[csrfName] 		= csrfVal;
@@ -290,7 +225,7 @@
 			}else{
                 $(this).addClass('act');
 				url = $(this).attr('url');
-                product_id = $(this).attr('product_id');
+                product_id = $('.product_view_id').val();
                 csrfName = $(".product_csrf").attr("name");
 				csrfVal  = $(".product_csrf").val();
                 param = {};
@@ -314,7 +249,7 @@
 			});
 			if(i){
 				getCOUrl = "<?= Yii::$service->url->getUrl('catalog/product/getcoprice'); ?>";
-				product_id = "<?=  $_id ?>";		
+				product_id = $('.product_view_id').val();;		
 				qty = $(".qty").val();
 				custom_option_sku = '';
 				for(x in custom_option_arr){

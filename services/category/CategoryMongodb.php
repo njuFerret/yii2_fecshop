@@ -42,7 +42,15 @@ class CategoryMongodb extends Service implements CategoryInterface
             return new $this->_categoryModelName;
         }
     }
-    
+    /**
+     * 通过主键，得到Category对象。
+     */
+    public function findOne($where)
+    {
+        $one = $this->_categoryModel->findOne($where);
+        
+        return $one;
+    }
     /**
      * 通过url_key，得到Category对象。
      */
@@ -105,6 +113,11 @@ class CategoryMongodb extends Service implements CategoryInterface
             'coll' => $query->all(),
             'count'=> $query->limit(null)->offset(null)->count(),
         ];
+    }
+    
+    public function apiColl($filter = '')
+    {
+        return $this->coll($filter);
     }
 
     /**
@@ -173,6 +186,37 @@ class CategoryMongodb extends Service implements CategoryInterface
         $model->save();
 
         return $model;
+    }
+     /** 
+     * @param $arr | array
+     * 用于同步mysql数据库到mongodb数据库中
+     */
+    public function sync($arr)
+    {
+        $originUrlKey = 'catalog/category/index';
+        $origin_mysql_parent_id = $arr['parent_id'];
+        $origin_mysql_id = $arr['id'];
+        unset($arr['parent_id']);
+        unset($arr['id']);
+        $model = $this->_categoryModel->findOne([
+            'origin_mysql_id' => $origin_mysql_id
+        ]);
+        if (!$model['origin_mysql_id']) {
+            $model = new $this->_categoryModelName;
+            $model->created_at = time();
+        }
+        
+        $model->origin_mysql_id = $origin_mysql_id;
+        $model->origin_mysql_parent_id = $origin_mysql_parent_id;
+        //$arr = $this->serializeSaveData($arr);
+        $saveStatus = Yii::$service->helper->ar->save($model, $arr);
+        
+        $originUrl = $originUrlKey.'?'.$this->getPrimaryKey() .'='. $model->_id;
+        $originUrlKey = isset($model['url_key']) ? $model['url_key'] : '';
+        $defaultLangTitle = Yii::$service->fecshoplang->getDefaultLangAttrVal($arr['name'], 'name');
+        $urlKey = Yii::$service->url->saveRewriteUrlKeyByStr($defaultLangTitle, $originUrl, $originUrlKey);
+        $model->url_key = $urlKey;
+        $model->save();
     }
 
     /**
@@ -263,6 +307,7 @@ class CategoryMongodb extends Service implements CategoryInterface
                     $idKey    => $idVal,
                     'level'   => $level,
                     'name'    => Yii::$service->fecshoplang->getLangAttrVal($cate['name'], 'name', $lang),
+                    'thumbnail_image' => $cate['thumbnail_image'],
                 ];
                 if ($appserver) {
                     $arr[$idVal]['url'] = '/catalog/category/'.$idVal;
@@ -455,7 +500,10 @@ class CategoryMongodb extends Service implements CategoryInterface
 
         return $data;
     }
-
+    public function getChildCategory($category_id) {
+        
+        return $this->getChildCate($category_id);
+    }
     protected function getChildCate($category_id)
     {
         //echo $category_id;
@@ -463,7 +511,7 @@ class CategoryMongodb extends Service implements CategoryInterface
             'parent_id' => $category_id,
             'status' => $this->getCategoryEnableStatus(),
             'menu_show'  => $this->getCategoryMenuShowStatus(),
-        ])->all();
+        ])->orderBy(['sort_order' => SORT_DESC]) ->all();
         $arr = [];
         if (is_array($data) && !empty($data)) {
             foreach ($data as $one) {
@@ -476,10 +524,97 @@ class CategoryMongodb extends Service implements CategoryInterface
                     'name'        => $currentName,
                     'url_key'    => $currentUrlKey,
                     'parent_id'    => $one['parent_id'],
+                    'thumbnail_image' => $one['thumbnail_image'],
+                    'image' => $one['image'],
                 ];
             }
         }
 
         return $arr;
+    }
+    
+    /**
+     * @param $one|array , save one data . 分类数组
+     * @param $originUrlKey|string , 分类的在修改之前的url key.（在数据库中保存的url_key字段，如果没有则为空）
+     * 保存分类，同时生成分类的伪静态url（自定义url），如果按照name生成的url或者自定义的urlkey存在，系统则会增加几个随机数字字符串，来增加唯一性。
+     * 和save方法不同的是，如果excel 中的category_id，查询不到，那么插入数据，将新插入数据的id = excel category id
+     */
+    public function excelSave($one, $originUrlKey = 'catalog/category/index')
+    {
+        $one['parent_id'] = (string)$one['parent_id'];
+        $one[$this->getPrimaryKey()] = (string)$one[$this->getPrimaryKey()];
+        $parent_id = $one['parent_id'];
+        $currentDateTime = \fec\helpers\CDate::getCurrentDateTime();
+        $primaryVal = isset($one[$this->getPrimaryKey()]) ? $one[$this->getPrimaryKey()] : '';
+        if (!$primaryVal) {
+            Yii::$service->helper->errors->add('category id can not empty');
+            
+            return false;
+        }
+            $model = $this->_categoryModel->findOne($primaryVal);
+            if (!isset($model[$this->getPrimaryKey()]) || !$model[$this->getPrimaryKey()]) {
+                $model = new $this->_categoryModelName;
+                $idV = $one[$this->getPrimaryKey()];
+                //echo $this->getPrimaryKey();
+                //echo $idV;exit;
+                $model[$this->getPrimaryKey()] = $idV  ;
+                $model->created_at = time();
+                $model->created_user_id = \fec\helpers\CUser::getCurrentUserId();
+            } else {
+                $name =$model['name'];
+                $title = $model['title'];
+                $meta_keywords = $model['meta_keywords'];
+                $meta_description = $model['meta_description'];
+                $description = $model['description'];
+                //var_dump($title);var_dump($one['title']);
+                if (is_array($one['name']) && !empty($one['name'])) {
+                    $one['name'] = array_merge((is_array($name) ? $name : []), $one['name']);
+                }
+                if (is_array($one['title']) && !empty($one['title'])) {
+                    $one['title'] = array_merge((is_array($title) ? $title : []), $one['title']);
+                }
+                if (is_array($one['meta_keywords']) && !empty($one['meta_keywords'])) {
+                    $one['meta_keywords'] = array_merge((is_array($meta_keywords) ? $meta_keywords : []), $one['meta_keywords']);
+                }
+                if (is_array($one['meta_description']) && !empty($one['meta_description'])) {
+                    $one['meta_description'] = array_merge((is_array($meta_description) ? $meta_description : []), $one['meta_description']);
+                }
+                if (is_array($one['description']) && !empty($one['description'])) {
+                    $one['description'] = array_merge((is_array($description) ? $description : []), $one['description']);
+                }
+            }
+            //$parent_id = $model['parent_id'];
+        
+        // 增加分类的级别字段level，从1级级别开始依次类推。
+        if ($parent_id === '0') {
+            $model['level'] = 1;
+        } else {
+            $parent_model = $this->_categoryModel->findOne($parent_id);
+            if ($parent_level = $parent_model['level']) {
+                $model['level'] = $parent_level + 1;
+            }
+            
+        }
+        $model->updated_at = time();
+        unset($one['_id']);
+        $one['status']    = (int)$one['status'];
+        $one['menu_show'] = (int)$one['menu_show'];
+        $allowMenuShowArr = [ $model::MENU_SHOW, $model::MENU_NOT_SHOW];
+        if (!in_array($one['menu_show'], $allowMenuShowArr)) {
+            $one['menu_show'] = $model::MENU_SHOW;
+        }
+        $allowStatusArr = [ $model::STATUS_ENABLE, $model::STATUS_DISABLE];
+        if (!in_array($one['status'], $allowStatusArr)) {
+            $one['status'] = $model::STATUS_ENABLE;
+        }
+        $saveStatus = Yii::$service->helper->ar->save($model, $one);
+        $originUrl = $originUrlKey.'?'.$this->getPrimaryKey() .'='. $primaryVal;
+        $originUrlKey = isset($one['url_key']) ? $one['url_key'] : '';
+        $defaultLangTitle = Yii::$service->fecshoplang->getDefaultLangAttrVal($one['name'], 'name');
+        $urlKey = Yii::$service->url->saveRewriteUrlKeyByStr($defaultLangTitle, $originUrl, $originUrlKey);
+        $model->url_key = $urlKey;
+        $model->save();
+
+        return $model;
     }
 }

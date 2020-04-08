@@ -53,6 +53,16 @@ class ProductinfoController extends CatalogController
 
         return $this->render($this->action->id, $data);
     }
+    
+    public function actionManagerbatchedit()
+    {
+        
+        $data = $this->getBlock()->getLastData();
+
+        return $this->render($this->action->id, $data);
+    }
+    
+    
 
     // catalog
     public function actionImageupload()
@@ -65,7 +75,16 @@ class ProductinfoController extends CatalogController
     {
         $this->getBlock()->getProductCategory();
     }
+    
+    
+    public function actionManagerbatcheditsave()
+    {
+        
+        $data = $this->getBlock('managerbatchedit')->save();
 
+        return $this->render($this->action->id, $data);
+    }
+    
     public function actionManagereditsave()
     {
         // save role,通过resource，判断当前用户是否有保存所有产品的权限，默认，用户只有保存自己发布的产品，而不能保存其他用户创建的的产品
@@ -88,6 +107,7 @@ class ProductinfoController extends CatalogController
                 }
             }
         }
+        
         $data = $this->getBlock('manageredit')->save();
 
         return $this->render($this->action->id, $data);
@@ -100,8 +120,14 @@ class ProductinfoController extends CatalogController
         $removeAllKey = Yii::$service->admin->role->productRemoveAllRoleKey;
         $primaryKey = Yii::$service->product->getPrimaryKey();
         $product_id = Yii::$app->request->get($primaryKey);
-        $product_ids = Yii::$app->request->get($primaryKey.'s');
-        if ($product_id && (!is_array($resources) || !isset($resources[$removeAllKey]) || !$resources[$removeAllKey])) {
+        $product_ids = Yii::$app->request->post($primaryKey.'s');
+        if (!$product_id && !$product_ids) {
+            echo json_encode([
+                'statusCode' => '300',
+                'message' => Yii::$service->page->translate->__('You do not have role to remove this product') ,
+            ]);
+            exit;
+        }else if ($product_id && (!is_array($resources) || !isset($resources[$removeAllKey]) || !$resources[$removeAllKey])) {
             $product = Yii::$service->product->getByPrimaryKey($product_id);
             if ($product['sku']) {
                 $user = Yii::$app->user->identity;

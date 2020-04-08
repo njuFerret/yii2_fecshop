@@ -50,6 +50,15 @@ class Wxpay extends Service
         if (!is_file($wxpayConfigFile)) {
             throw new InvalidConfigException('wxpay config file:['.$wxpayConfigFile.'] is not exist');
         }
+        $appId = Yii::$app->store->get('payment_wxpay', 'wechat_service_app_id');
+        $appSecret = Yii::$app->store->get('payment_wxpay', 'wechat_service_app_secret');
+        $mchKey = Yii::$app->store->get('payment_wxpay', 'merchant_key');
+        $mchId = Yii::$app->store->get('payment_wxpay', 'merchant_mch_id');
+        define('WX_APP_ID', $appId);
+        define('WX_APP_SECRET', $appSecret);
+        define('WX_MCH_KEY', $mchKey);
+        define('WX_MCH_ID', $mchId);
+        
         require_once($wxpayConfigFile);
         
         $wxpayApiFile       = Yii::getAlias('@fecshop/lib/wxpay/lib/WxPay.Api.php');
@@ -69,15 +78,17 @@ class Wxpay extends Service
         //交易类型
         //JSAPI--公众号支付、NATIVE--原生扫码支付、APP--app支付，统一下单接口trade_type的传参可参考这里
         //MICROPAY--刷卡支付，刷卡支付有单独的支付接口，不调用统一下单接口
-       
-        if ($this->devide == 'wap') {
-            $this->tradeType     = 'MWEB';
-        } elseif ($this->devide == 'pc') {
-            $this->tradeType = "NATIVE";
-        } else {
-            throw new InvalidConfigException('you must config param [devide] in payment wxpay service');
-            return ;
+        if (!$this->tradeType) {
+            if ($this->devide == 'wap') {
+                $this->tradeType     = 'MWEB';
+            } elseif ($this->devide == 'pc') {
+                $this->tradeType = "NATIVE";
+            } else {
+                throw new InvalidConfigException('you must config param [devide] in payment wxpay service');
+                return ;
+            }
         }
+        
         $this->_allowChangOrderStatus = [
             Yii::$service->order->payment_status_pending,
             Yii::$service->order->payment_status_processing,
@@ -91,6 +102,7 @@ class Wxpay extends Service
     {
         $notifyFile       = Yii::getAlias('@fecshop/services/payment/wxpay/notify.php');
         require_once($notifyFile);
+        
         \Yii::info('begin ipn', 'fecshop_debug');
         $notify = new \PayNotifyCallBack();
         $notify->Handle(false);
@@ -163,6 +175,7 @@ class Wxpay extends Service
         }
          
         $notify_url = Yii::$service->payment->getStandardIpnUrl();    ////获取支付配置中的返回ipn url
+        //$notify_url = Yii::$service->url->getUrl("payment/wxpay/standard/ipn");    ////获取支付配置中的返回ipn url
         $notify = new \NativePay();
         $input  = new \WxPayUnifiedOrder();
         $input->SetBody($this->scanCodeBody);
@@ -326,10 +339,10 @@ class Wxpay extends Service
             Yii::$service->helper->errors->add('request return_code is not equle to SUCCESS');
             return false;
         }
-        if ($trade_type != 'NATIVE') {
-            Yii::$service->helper->errors->add('request trade_type is not equle to NATIVE');
-            return false;
-        }
+        //if ($trade_type != 'NATIVE') {
+        //    Yii::$service->helper->errors->add('request trade_type is not equle to NATIVE');
+        //    return false;
+        //}
         if (!$this->_order) {
             $this->_order = Yii::$service->order->getByIncrementId($out_trade_no);
             Yii::$service->payment->setPaymentMethod($this->_order['payment_method']);

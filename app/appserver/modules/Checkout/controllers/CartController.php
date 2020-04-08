@@ -8,14 +8,14 @@
  */
 namespace fecshop\app\appserver\modules\Checkout\controllers;
 
-use fecshop\app\appserver\modules\AppserverController;
+use fecshop\app\appserver\modules\AppserverTokenController;
 use Yii;
 
 /**
  * @author Terry Zhao <2358269014@qq.com>
  * @since 1.0
  */
-class CartController extends AppserverController
+class CartController extends AppserverTokenController
 {
     public $enableCsrfValidation = false;
 
@@ -27,10 +27,17 @@ class CartController extends AppserverController
         $currency_info = Yii::$service->page->currency->getCurrencyInfo();
         $code = Yii::$service->helper->appserver->status_success;
         $cart_info = $this->getCartInfo();
-
+        // check if is enable paypal express
+        $enablePaypalExpress = false;
+        $appName = Yii::$service->helper->getAppName();
+        $paypalExpressConfig = Yii::$app->store->get($appName.'_payment', 'paypal_express');
+        if ($paypalExpressConfig == Yii::$app->store->enable) {
+            $enablePaypalExpress = true;
+        }
         $data = [
             'cart_info' => $cart_info,
             'currency'  => $currency_info,
+            'enablePaypalExpress' => $enablePaypalExpress,
         ];
         $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
 
@@ -91,6 +98,13 @@ class CartController extends AppserverController
                 }
                 $activeStatus = Yii::$service->cart->quoteItem->activeStatus;
                 $cart_info['products'][$k]['active'] = ($product_one['active'] == $activeStatus) ? 1 : 0;
+                if ( isset($cart_info['products'][$k]['spu_options']) && is_array($cart_info['products'][$k]['spu_options']) ) {
+                    $spu_options_arr = [];
+                    foreach ($cart_info['products'][$k]['spu_options'] as $op_k => $op_v) {
+                        $spu_options_arr[] = $op_k . ': ' . $op_v;
+                    }
+                    $cart_info['products'][$k]['spu_options_str'] = implode(',', $spu_options_arr);
+                }
             }
         }
 
@@ -140,6 +154,7 @@ class CartController extends AppserverController
         $custom_option = Yii::$app->request->post('custom_option');
         $product_id = Yii::$app->request->post('product_id');
         $qty = Yii::$app->request->post('qty');
+        $buy_now = Yii::$app->request->post('buy_now');
         //$custom_option  = \Yii::$service->helper->htmlEncode($custom_option);
         $product_id = \Yii::$service->helper->htmlEncode($product_id);
         $qty = \Yii::$service->helper->htmlEncode($qty);
@@ -160,6 +175,14 @@ class CartController extends AppserverController
             ];
             $innerTransaction = Yii::$app->db->beginTransaction();
             try {
+                if ($buy_now == 1) { // 如果是立即购买，则先将购物车中的产品disable掉
+                    if (!Yii::$service->cart->selectAllItem(false)) {
+                        $innerTransaction->rollBack();
+                        $code = Yii::$service->helper->appserver->cart_product_select_fail;
+                        $data = [];
+                        $responseData = Yii::$service->helper->appserver->getResponseData($code, $data);
+                    }
+                }
                 $addToCart = Yii::$service->cart->addProductToCart($item);
                 if ($addToCart) {
                     $innerTransaction->commit();

@@ -34,6 +34,7 @@ class AdminUserForm extends AdminUser {
     }
 
     public function validateUsername($attribute, $params){
+        
         if($this->id){
             $one = AdminUser::find()->where(" id != ".$this->id." AND username = '".$this->username."' ")
                 ->one();
@@ -80,20 +81,23 @@ class AdminUserForm extends AdminUser {
             }
         }
     }
-
+    
     public function validatePasswordFormat($attribute, $params){
         if($this->id){
             if($this->password && strlen($this->password) <= 6){
                 $this->addError($attribute,"password must >=6");
             }
         }else{
-            if($this->password && strlen($this->password) >= 6){
-
-            }else{
+            if(!$this->password){
+                $this->addError($attribute,"password can not empty");
+            } else if (strlen($this->password) < 6) {
                 $this->addError($attribute,"password must >=6");
+            } else if (!strlen($this->password) >= 100) {
+                $this->addError($attribute,"password must <= 100");
             }
         }
     }
+    
 
     public function setPassword($password)
     {

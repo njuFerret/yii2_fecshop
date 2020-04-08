@@ -20,19 +20,35 @@ class Forgotpassword
 {
     public function getLastData()
     {
-        $forgotPasswordParam = \Yii::$app->getModule('customer')->params['forgotPassword'];
-        $forgotCaptcha = isset($forgotPasswordParam['forgotCaptcha']) ? $forgotPasswordParam['forgotCaptcha'] : false;
-
+        $appName = Yii::$service->helper->getAppName();
+        $forgotCaptcha = Yii::$app->store->get($appName.'_account', 'forgotPasswordCaptcha');
+        $forgotCaptcha = ($forgotCaptcha == Yii::$app->store->enable)  ? true : false;
+        //$forgotPasswordParam = \Yii::$app->getModule('customer')->params['forgotPassword'];
+        //$forgotCaptcha = isset($forgotPasswordParam['forgotCaptcha']) ? $forgotPasswordParam['forgotCaptcha'] : false;
+        $this->breadcrumbs(Yii::$service->page->translate->__('Forgot Password'));
         return [
             'forgotCaptcha' => $forgotCaptcha,
         ];
+    }
+    
+    // 面包屑导航
+    protected function breadcrumbs($name)
+    {
+        if (Yii::$app->controller->module->params['forgot_password_breadcrumbs']) {
+            Yii::$service->page->breadcrumbs->addItems(['name' => $name]);
+        } else {
+            Yii::$service->page->breadcrumbs->active = false;
+        }
     }
 
     public function sendForgotPasswordMailer($editForm)
     {
         $captcha = $editForm['captcha'];
-        $forgotPasswordParam = \Yii::$app->getModule('customer')->params['forgotPassword'];
-        $forgotCaptcha = isset($forgotPasswordParam['forgotCaptcha']) ? $forgotPasswordParam['forgotCaptcha'] : false;
+        $appName = Yii::$service->helper->getAppName();
+        $forgotCaptcha = Yii::$app->store->get($appName.'_account', 'forgotPasswordCaptcha');
+        $forgotCaptcha = ($forgotCaptcha == Yii::$app->store->enable)  ? true : false;
+        //$forgotPasswordParam = \Yii::$app->getModule('customer')->params['forgotPassword'];
+        //$forgotCaptcha = isset($forgotPasswordParam['forgotCaptcha']) ? $forgotPasswordParam['forgotCaptcha'] : false;
         // 如果开启了验证码，但是验证码验证不正确就报错返回。
         if ($forgotCaptcha && !$captcha) {
             Yii::$service->page->message->addError(['Captcha can not empty']);

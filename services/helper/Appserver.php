@@ -70,7 +70,7 @@ class Appserver extends Service
 
     public $account_is_logined                            = 1100006; // 登录：用户已经登录
 
-    public $account_register_fail                         = 1100007; // 注册：邮箱已经存在
+    public $account_register_fail                         = 1100007; // 注册：失败
 
     public $account_email_not_exist                       = 1100008; // 账户中该email不存在
 
@@ -94,7 +94,21 @@ class Appserver extends Service
 
     public $account_address_save_fail                     = 1100018;
     
-    /**
+    public $account_register_disable       = 1100019; // 注册后，账户disable，需要邮件激活
+    public $account_register_resend_email_success       = 1100020; // 登录：账户的邮箱或者密码不正确
+    public $account_register_send_email_fail       = 1100021; // 注册后，账户disable，需要邮件激活
+    public $account_register_enable_token_invalid = 1100022;
+    
+    public $account_wx_get_user_info_fail = 1100023;  // 基于code，请求微信获取用户信息失败
+    public $account_wx_user_login_fail = 1100024;   // wx登陆失败
+    public $account_wx_get_customer_by_openid_fail = 1100025; // 通过openid 查找customer
+    
+    public $no_account_openid_and_session_key = 1100026;  // session中找不到 account_openid and session_key
+    public $account_has_account_openid = 1100027;  //  openid 已经有存在的账户了
+    public $account_login_and_get_access_token_fail = 1100028; // 登陆账户获取access_token失败
+    public $account_register_email_exit                         = 1100029; // 注册：邮箱已经存在
+    public $account_address_set_default_fail                         = 1100030; // 用户设置默认地址失败
+    /** 
      * category状态码
      */
     public $category_not_exist                             = 1200000; // 分类：分类不存在
@@ -165,6 +179,8 @@ class Appserver extends Service
     public $order_alipay_payment_fail                      = 1500019;           // Order: 下订单，支付宝支付订单失败
     
     public $order_payment_paypal_express_error             = 1500020;
+    
+    public $order_wxpay_payment_fail                      = 1500021;
 
     /**
      * cms
@@ -179,8 +195,7 @@ class Appserver extends Service
      * @return array
      */
     public function getCors(){
-        $fecshop_uuid = Yii::$service->session->fecshop_uuid;
-        $cors_allow_headers = [$fecshop_uuid, 'fecshop-lang', 'fecshop-currency', 'access-token'];
+        $cors_allow_headers = $this->getCorsAllowHeaders();
         $cors = $this->appserver_cors;
         $corsFilterArr = [];
         if (is_array($cors) && !empty($cors)) {
@@ -193,21 +208,27 @@ class Appserver extends Service
             if (isset($cors['Access-Control-Max-Age']) && $cors['Access-Control-Max-Age']) {
                 $corsFilterArr['Access-Control-Max-Age'] = $cors['Access-Control-Max-Age'];
             }
-            if (isset($cors['Access-Control-Expose-Headers']) && $cors['Access-Control-Expose-Headers']) {
-                $cors_allow_headers = array_merge($cors_allow_headers, $cors['Access-Control-Expose-Headers']);
+            if (isset($cors['Access-Control-Allow-Headers']) && is_array($cors['Access-Control-Allow-Headers'])) {
+                $cors_allow_headers = array_merge($cors_allow_headers, $cors['Access-Control-Allow-Headers']);
+                $corsFilterArr['Access-Control-Request-Headers'] = $cors_allow_headers;
+                $corsFilterArr['Access-Control-Expose-Headers'] = $cors_allow_headers;
             }
-            $corsFilterArr['Access-Control-Expose-Headers'] = $cors_allow_headers;
+            $corsFilterArr['Access-Control-Allow-Credentials'] = true;
         }
         return $corsFilterArr;
         
+    }
+
+    public function getCorsAllowHeaders() {
+        $fecshop_uuid = Yii::$service->session->fecshop_uuid;
+        return ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', $fecshop_uuid, 'fecshop-lang', 'fecshop-currency', 'access-token'];
     }
     /**
      * 用于vue端跨域访问的 customer token auth 的 cors设置
      * @return array
      */
     public function getYiiAuthCors(){
-        $fecshop_uuid = Yii::$service->session->fecshop_uuid;
-        $cors_allow_headers = [$fecshop_uuid, 'fecshop-lang', 'fecshop-currency', 'access-token'];
+        $cors_allow_headers = $this->getCorsAllowHeaders();
         $cors = $this->appserver_cors;
         $corsFilterArr = [];
         if (is_array($cors) && !empty($cors)) {
@@ -223,9 +244,10 @@ class Appserver extends Service
             if (isset($cors['Access-Control-Allow-Methods']) && is_array($cors['Access-Control-Allow-Methods'])) {
                 $corsFilterArr[] = 'Access-Control-Allow-Methods: ' . implode(', ',$cors['Access-Control-Allow-Methods']);
             }
+            $corsFilterArr[] = 'Access-Control-Allow-Credentials: true';
         }
-        return $corsFilterArr;
         
+        return $corsFilterArr;
     }
     /**
      * @param int $code 状态码
@@ -375,6 +397,46 @@ class Appserver extends Service
             $this->account_address_save_fail => [
                 'message' => 'account address save fail',
             ],
+            $this->account_register_disable => [
+                'message' => 'account register is disable',
+            ],
+            $this->account_register_resend_email_success => [
+                'message' => 'account register resend email success',
+            ],
+            $this->account_register_send_email_fail => [
+                'message' => 'account_register_send_email_fail',
+            ],
+            $this->account_register_enable_token_invalid => [
+                'message' => 'account_register_enable_token_invalid',
+            ],
+            $this->account_wx_get_user_info_fail => [
+                'message' => 'use wxCode to get user info  fail',
+            ],
+            $this->account_wx_user_login_fail => [
+                'message' => 'wx user login account fail',
+            ],
+            $this->account_wx_get_customer_by_openid_fail => [
+                'message' => 'you should bind wx openid with one account',
+            ],
+            
+            
+            
+            $this->no_account_openid_and_session_key => [
+                'message' => 'no_account_openid_and_session_key',
+            ],
+            $this->account_has_account_openid => [
+                'message' => 'account_has_account_openid',
+            ],
+            $this->account_login_and_get_access_token_fail => [
+                'message' => 'account_login_and_get_access_token_fail',
+            ],
+            $this->account_register_email_exit => [
+                'message' => 'account_register_email_exit',
+            ],
+            
+            $this->account_address_set_default_fail => [
+                'message' => 'account_address_set_default_fail',
+            ],
             
             $this->account_address_edit_param_invaild => [
                 'message' => 'account address edit param is invalid',
@@ -504,6 +566,10 @@ class Appserver extends Service
             $this->order_alipay_payment_fail => [
                 'message' => 'order pay by alipay payment fail',
             ],
+            $this->order_wxpay_payment_fail => [
+                'message' => 'order pay by wxpay payment fail',
+            ],
+            
             
             /**
              * cms

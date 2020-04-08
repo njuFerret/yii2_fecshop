@@ -21,7 +21,7 @@ class Resetpassword
     {
         $resetToken = Yii::$app->request->get('resetToken');
         $identity = Yii::$service->customer->findByPasswordResetToken($resetToken);
-        //var_dump($identity );exit;
+        $this->breadcrumbs(Yii::$service->page->translate->__('Reset Password'));
         if ($identity) {
             return [
                 'identity'        => $identity,
@@ -32,6 +32,16 @@ class Resetpassword
             return [
                 'forgotPasswordUrl'=> Yii::$service->url->getUrl('customer/account/forgotpassword'),
             ];
+        }
+    }
+    
+     // 面包屑导航
+    protected function breadcrumbs($name)
+    {
+        if (Yii::$app->controller->module->params['forgot_reset_password_breadcrumbs']) {
+            Yii::$service->page->breadcrumbs->addItems(['name' => $name]);
+        } else {
+            Yii::$service->page->breadcrumbs->active = false;
         }
     }
 
@@ -67,6 +77,10 @@ class Resetpassword
             $status = Yii::$service->customer->changePasswordAndClearToken($password, $identity);
             if ($status) {
                 return true;
+            } else {
+                Yii::$service->page->message->addByHelperErrors();
+                
+                return false;
             }
         } else {
             Yii::$service->page->message->addError(['Reset Password Token is Expired OR The Email you entered does not match with the resetToekn. ']);
